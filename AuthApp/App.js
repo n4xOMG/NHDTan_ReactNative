@@ -9,6 +9,7 @@ import OtpVerificationScreen from "./src/screens/OtpVerificationScreen";
 import ResetPasswordScreen from "./src/screens/ResetPasswordScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import EditProfileScreen from "./src/screens/EditProfileScreen";
+import BookDetail from "./src/screens/BookDetailScreen";
 const Stack = createStackNavigator();
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -31,6 +32,7 @@ export default function App() {
         <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         <Stack.Screen name="EditProfileScreen" component={EditProfileScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="BookDetail" component={BookDetail} />
       </Stack.Navigator>
     </NavigationContainer>
   );
