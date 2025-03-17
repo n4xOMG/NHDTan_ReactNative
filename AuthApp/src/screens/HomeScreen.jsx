@@ -28,7 +28,6 @@ const HomeScreen = () => {
     setLoading(true);
     try {
       const response = await getTop10LikedBooks();
-      console.log("Top 10 liked books:", response);
       setTop10LikedBooks((prev) => [...prev, ...response]);
     } catch (error) {
       console.error("Error loading top 10 liked books:", error);

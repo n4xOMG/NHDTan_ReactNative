@@ -1,5 +1,5 @@
 import axios from "axios";
-import { API_BASE_URL } from "../api/api";
+import { api, API_BASE_URL } from "../api/api";
 
 export const getBooks = async () => {
   try {
@@ -27,6 +27,16 @@ export const searchBooks = async ({ title }) => {
     return response.data;
   } catch (error) {
     console.error("Error during fetching books:", error);
+    throw error;
+  }
+};
+
+export const getUserReadingProgressByBookId = async ({ bookId }) => {
+  try {
+    const response = await api.get(`${API_BASE_URL}/api/reading-progress/books/${bookId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error during fetching reading progress:", error);
     throw error;
   }
 };

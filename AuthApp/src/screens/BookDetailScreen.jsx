@@ -1,11 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   Image,
   TextInput,
-  Button,
-  FlatList,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
@@ -14,8 +12,14 @@ import {
   Platform,
 } from "react-native";
 import { AntDesign } from "@expo/vector-icons";
-
+import ChapterList from "../components/BookDetailScreen/ChapterList";
+import { getChaptersByBookId } from "../services/ChapterServices";
+import { ProgressView } from "@react-native-community/progress-view";
 const { width } = Dimensions.get("window");
+const ProgressBar = Platform.select({
+  ios: ProgressView,
+  android: ProgressView,
+});
 
 export default function BookDetail({ route, navigation }) {
   const { book } = route.params;
@@ -23,6 +27,10 @@ export default function BookDetail({ route, navigation }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [showFullDescription, setShowFullDescription] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [chapters, setChapters] = useState([]);
+  const [readingProgress, setReadingProgress] = useState([]);
+  const [overallProgress, setOverallProgress] = useState(0);
 
   const handleFavorite = () => setIsFav(!isFav);
   const handleAddComment = () => {
@@ -32,13 +40,51 @@ export default function BookDetail({ route, navigation }) {
     }
   };
 
-  // Function to toggle description visibility
   const toggleDescription = () => {
     setShowFullDescription(!showFullDescription);
   };
 
-  // Truncate description if it's too long
   const truncatedDescription = book.description?.length > 100 ? book.description.substring(0, 100) + "..." : book.description;
+
+  useEffect(() => {
+    fetchChaptersByBook();
+    fetchReadingProgress();
+  }, []);
+
+  const fetchChaptersByBook = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const response = await getChaptersByBookId(book?.id);
+      setChapters((prev) => [...prev, ...response]);
+    } catch (error) {
+      console.error("Error loading chapters by book:", error);
+    }
+    setLoading(false);
+  };
+
+  const fetchReadingProgress = async () => {
+    setLoading(true);
+    try {
+      const response = await getReadingProgressByBookId(book?.id);
+      setReadingProgress(response);
+      calculateOverallProgress(response);
+    } catch (error) {
+      console.error("Error fetching reading progress:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateOverallProgress = (progressData) => {
+    if (!progressData || progressData.length === 0 || chapters.length === 0) {
+      setOverallProgress(0);
+      return;
+    }
+    const totalProgress = progressData.reduce((sum, progress) => sum + (progress.progress || 0), 0);
+    const averageProgress = totalProgress / chapters.length;
+    setOverallProgress(averageProgress);
+  };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
@@ -57,10 +103,8 @@ export default function BookDetail({ route, navigation }) {
             <Text style={localstyles.author}>by {book.authorName || book.author?.name}</Text>
             <Text style={localstyles.category}>Category: {book.categoryName}</Text>
 
-            {/* Description with Read More button */}
             <View>
               <Text style={localstyles.description}>{showFullDescription ? book.description : truncatedDescription}</Text>
-
               {book.description?.length > 100 && (
                 <TouchableOpacity onPress={toggleDescription} style={localstyles.readMoreButton}>
                   <Text style={localstyles.readMoreText}>{showFullDescription ? "Show less" : "Read more"}</Text>
@@ -73,6 +117,25 @@ export default function BookDetail({ route, navigation }) {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Overall Progress Bar */}
+        <View style={localstyles.progressContainer}>
+          <Text style={localstyles.progressTitle}>Reading Progress</Text>
+          <ProgressBar
+            style={localstyles.progressBar}
+            progress={overallProgress / 100}
+            color="#2196F3"
+            styleAttr={Platform.OS === "android" ? "Horizontal" : undefined}
+          />
+          <Text style={localstyles.progressText}>{Math.round(overallProgress)}% Complete</Text>
+        </View>
+
+        {/* Chapter List Component */}
+        {chapters && (
+          <View style={localstyles.chapterListContainer}>
+            <ChapterList chapters={chapters} readingProgress={readingProgress || []} />
+          </View>
+        )}
 
         <View style={localstyles.commentSection}>
           <Text style={localstyles.commentTitle}>Comments</Text>
@@ -183,6 +246,44 @@ const localstyles = StyleSheet.create({
     top: 0,
     right: 0,
     padding: 5,
+  },
+  // Progress bar styles
+  progressContainer: {
+    marginTop: 20,
+    backgroundColor: "white",
+    borderRadius: 10,
+    padding: 15,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+  },
+  progressTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10,
+  },
+  progressBar: {
+    width: "100%",
+    height: 10,
+  },
+  progressText: {
+    marginTop: 5,
+    fontSize: 14,
+    color: "#666",
+    textAlign: "right",
+  },
+  chapterListContainer: {
+    marginTop: 20,
+    backgroundColor: "white",
+    borderRadius: 10,
+    padding: 15,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
   },
   commentSection: {
     marginTop: 25,
