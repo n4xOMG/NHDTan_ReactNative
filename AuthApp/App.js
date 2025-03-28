@@ -1,39 +1,21 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { NavigationContainer } from "@react-navigation/native";
-import { createStackNavigator } from "@react-navigation/stack";
-import { useEffect, useState } from "react";
-import LoginScreen from "./src/screens/LoginScreen";
-import RegisterScreen from "./src/screens/RegisterScreen";
-import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
-import OtpVerificationScreen from "./src/screens/OtpVerificationScreen";
-import ResetPasswordScreen from "./src/screens/ResetPasswordScreen";
-import HomeScreen from "./src/screens/HomeScreen";
-import EditProfileScreen from "./src/screens/EditProfileScreen";
-import BookDetail from "./src/screens/BookDetailScreen";
-const Stack = createStackNavigator();
+import React from "react";
+import { Provider } from "react-redux";
+import { PersistGate } from "redux-persist/integration/react";
+import AppNavigator from "./src/navigation/AppNavigator";
+import { persistor, store } from "./src/redux/store";
+import { LogBox } from "react-native";
+import { useEffect } from "react";
+
+LogBox.ignoreLogs([
+  "TNodeChildrenRenderer: Support for defaultProps will be removed",
+  "MemoizedTNodeRenderer: Support for defaultProps will be removed",
+]);
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  useEffect(() => {
-    const checkToken = async () => {
-      const token = await AsyncStorage.getItem("userToken");
-      if (token) {
-        setIsLoggedIn(true);
-      }
-    };
-    checkToken();
-  }, []);
   return (
-    <NavigationContainer>
-      <Stack.Navigator initialRouteName={isLoggedIn ? "Home" : "Login"}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-        <Stack.Screen name="OtpVerification" component={OtpVerificationScreen} />
-        <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-        <Stack.Screen name="EditProfileScreen" component={EditProfileScreen} />
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="BookDetail" component={BookDetail} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <Provider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
+        <AppNavigator />
+      </PersistGate>
+    </Provider>
   );
 }

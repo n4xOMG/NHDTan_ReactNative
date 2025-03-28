@@ -40,3 +40,23 @@ export const getUserReadingProgressByBookId = async ({ bookId }) => {
     throw error;
   }
 };
+
+export const getUserFavStatus = async ({ bookId }) => {
+  try {
+    const response = await api.get(`${API_BASE_URL}/api/books/${bookId}/isLiked`);
+    return response.data;
+  } catch (error) {
+    console.error("Error during fetching user fav status:", error);
+    throw error;
+  }
+};
+
+export const toggleUserFavStatus = async ({ bookId }) => {
+  try {
+    const response = await api.put(`${API_BASE_URL}/api/books/follow/${bookId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error during toggling user fav status:", error);
+    throw error;
+  }
+};

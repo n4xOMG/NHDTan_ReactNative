@@ -1,42 +1,77 @@
-import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  Image,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
 import { AntDesign } from "@expo/vector-icons";
-import ChapterList from "../components/BookDetailScreen/ChapterList";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Text, TouchableOpacity, View } from "react-native";
+import ProgressBar from "react-native-progress/Bar";
+import { useDispatch, useSelector } from "react-redux";
+import ChapterList from "../components/ChapterList";
+import CommentsList from "../components/CommentList";
+import { fetchReadingProgressByBookId } from "../redux/slices/bookSlice";
+import { addBookComment } from "../redux/slices/commentSlice";
+import { getUserFavStatus, toggleUserFavStatus } from "../services/BookServices";
 import { getChaptersByBookId } from "../services/ChapterServices";
-import { ProgressView } from "@react-native-community/progress-view";
-const { width } = Dimensions.get("window");
-const ProgressBar = Platform.select({
-  ios: ProgressView,
-  android: ProgressView,
-});
+import { bookdetailstyles } from "../style/bookdetailstyles";
 
 export default function BookDetail({ route, navigation }) {
   const { book } = route.params;
   const [isFav, setIsFav] = useState(false);
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState("");
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [loading, setLoading] = useState(false);
   const [chapters, setChapters] = useState([]);
-  const [readingProgress, setReadingProgress] = useState([]);
   const [overallProgress, setOverallProgress] = useState(0);
 
-  const handleFavorite = () => setIsFav(!isFav);
-  const handleAddComment = () => {
-    if (newComment.trim()) {
-      setComments([...comments, newComment]);
-      setNewComment("");
+  const dispatch = useDispatch();
+  const readingProgress = useSelector((state) => state.books.readingProgress);
+  const isLoggedIn = useSelector((state) => state.auth.isLoggedIn);
+  const userToken = useSelector((state) => state.auth.token);
+
+  useEffect(() => {
+    if (!book) return;
+
+    const fetchFavStatus = async () => {
+      try {
+        const res = await getUserFavStatus({ bookId: book.id });
+        setIsFav(res);
+      } catch (error) {
+        console.error("Error fetching book liked status", error);
+      }
+    };
+
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        let chaptersResponse;
+        if (isLoggedIn && userToken) {
+          chaptersResponse = await getChaptersByBookId({ token: userToken, bookId: book.id });
+        } else {
+          chaptersResponse = await getChaptersByBookId({ token: null, bookId: book.id });
+        }
+        const progressResult = await dispatch(fetchReadingProgressByBookId({ bookId: book.id })).unwrap();
+
+        setChapters(chaptersResponse);
+        calculateOverallProgress(progressResult, chaptersResponse);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFavStatus();
+    fetchData();
+  }, [book, dispatch, isLoggedIn, userToken]);
+
+  useEffect(() => {
+    if (chapters.length > 0 && readingProgress && readingProgress.length > 0) {
+      calculateOverallProgress(readingProgress, chapters);
+    }
+  }, [readingProgress, chapters]);
+
+  const handleFavorite = async () => {
+    try {
+      const res = await toggleUserFavStatus({ bookId: book?.id });
+      setIsFav(res);
+    } catch (error) {
+      console.error("Error marking book as favoured", error);
     }
   };
 
@@ -46,302 +81,87 @@ export default function BookDetail({ route, navigation }) {
 
   const truncatedDescription = book.description?.length > 100 ? book.description.substring(0, 100) + "..." : book.description;
 
-  useEffect(() => {
-    fetchChaptersByBook();
-    fetchReadingProgress();
-  }, []);
-
-  const fetchChaptersByBook = async () => {
-    if (loading) return;
-    setLoading(true);
-    try {
-      const response = await getChaptersByBookId(book?.id);
-      setChapters((prev) => [...prev, ...response]);
-    } catch (error) {
-      console.error("Error loading chapters by book:", error);
-    }
-    setLoading(false);
-  };
-
-  const fetchReadingProgress = async () => {
-    setLoading(true);
-    try {
-      const response = await getReadingProgressByBookId(book?.id);
-      setReadingProgress(response);
-      calculateOverallProgress(response);
-    } catch (error) {
-      console.error("Error fetching reading progress:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const calculateOverallProgress = (progressData) => {
-    if (!progressData || progressData.length === 0 || chapters.length === 0) {
+  const calculateOverallProgress = (progressData, chaptersData = chapters) => {
+    if (!progressData || progressData.length === 0 || chaptersData.length === 0) {
       setOverallProgress(0);
       return;
     }
     const totalProgress = progressData.reduce((sum, progress) => sum + (progress.progress || 0), 0);
-    const averageProgress = totalProgress / chapters.length;
+    const averageProgress = totalProgress / chaptersData.length;
     setOverallProgress(averageProgress);
   };
 
-  return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <View style={localstyles.topBar}>
-        <TouchableOpacity style={localstyles.backButton} onPress={() => navigation.goBack()}>
+  const handleChapterUnlocked = (chapterId, updatedChapter) => {
+    setChapters((prevChapters) =>
+      prevChapters.map((chapter) => (chapter.id === chapterId ? { ...chapter, unlockedByUser: true } : chapter))
+    );
+  };
+
+  const renderHeader = () => (
+    <>
+      <View style={bookdetailstyles.topBar}>
+        <TouchableOpacity style={bookdetailstyles.backButton} onPress={() => navigation.goBack()}>
           <AntDesign name="arrowleft" size={24} color="white" />
-          <Text style={localstyles.backText}>Back</Text>
+          <Text style={bookdetailstyles.backText}>Back</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={localstyles.container} contentContainerStyle={localstyles.contentContainer}>
-        <View style={localstyles.card}>
-          <Image source={{ uri: book.bookCover }} style={localstyles.bookCover} />
-          <View style={localstyles.details}>
-            <Text style={localstyles.title}>{book.title}</Text>
-            <Text style={localstyles.author}>by {book.authorName || book.author?.name}</Text>
-            <Text style={localstyles.category}>Category: {book.categoryName}</Text>
-
-            <View>
-              <Text style={localstyles.description}>{showFullDescription ? book.description : truncatedDescription}</Text>
-              {book.description?.length > 100 && (
-                <TouchableOpacity onPress={toggleDescription} style={localstyles.readMoreButton}>
-                  <Text style={localstyles.readMoreText}>{showFullDescription ? "Show less" : "Read more"}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <TouchableOpacity style={localstyles.favoriteButton} onPress={handleFavorite}>
-              <AntDesign name={isFav ? "heart" : "hearto"} size={24} color="red" />
-            </TouchableOpacity>
-          </View>
+      {loading ? (
+        <View style={bookdetailstyles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2196F3" />
         </View>
-
-        {/* Overall Progress Bar */}
-        <View style={localstyles.progressContainer}>
-          <Text style={localstyles.progressTitle}>Reading Progress</Text>
-          <ProgressBar
-            style={localstyles.progressBar}
-            progress={overallProgress / 100}
-            color="#2196F3"
-            styleAttr={Platform.OS === "android" ? "Horizontal" : undefined}
-          />
-          <Text style={localstyles.progressText}>{Math.round(overallProgress)}% Complete</Text>
-        </View>
-
-        {/* Chapter List Component */}
-        {chapters && (
-          <View style={localstyles.chapterListContainer}>
-            <ChapterList chapters={chapters} readingProgress={readingProgress || []} />
-          </View>
-        )}
-
-        <View style={localstyles.commentSection}>
-          <Text style={localstyles.commentTitle}>Comments</Text>
-          {comments.length > 0 ? (
-            comments.map((comment, index) => (
-              <View key={index} style={localstyles.comment}>
-                <Text>{comment}</Text>
+      ) : (
+        <View style={bookdetailstyles.contentContainer}>
+          <View style={bookdetailstyles.card}>
+            <Image source={{ uri: book.bookCover }} style={bookdetailstyles.bookCover} />
+            <View style={bookdetailstyles.details}>
+              <Text style={bookdetailstyles.title}>{book.title}</Text>
+              <Text style={bookdetailstyles.author}>by {book.authorName || book.author?.name}</Text>
+              <Text style={bookdetailstyles.category}>Category: {book.categoryName}</Text>
+              <View>
+                <Text style={bookdetailstyles.description}>{showFullDescription ? book.description : truncatedDescription}</Text>
+                {book.description?.length > 100 && (
+                  <TouchableOpacity onPress={toggleDescription} style={bookdetailstyles.readMoreButton}>
+                    <Text style={bookdetailstyles.readMoreText}>{showFullDescription ? "Show less" : "Read more"}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            ))
-          ) : (
-            <Text style={localstyles.noComments}>No comments yet. Be the first to comment!</Text>
-          )}
-
-          <View style={localstyles.commentInputContainer}>
-            <TextInput
-              style={localstyles.commentInput}
-              value={newComment}
-              onChangeText={setNewComment}
-              placeholder="Add a comment..."
-              multiline
-            />
-            <TouchableOpacity style={localstyles.postButton} onPress={handleAddComment} disabled={!newComment.trim()}>
-              <Text style={localstyles.postButtonText}>Post</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={bookdetailstyles.favoriteButton} onPress={handleFavorite}>
+                <AntDesign name={isFav ? "heart" : "hearto"} size={24} color="red" />
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {/* Overall Progress Bar */}
+          <View style={bookdetailstyles.progressContainer}>
+            <Text style={bookdetailstyles.progressTitle}>Reading Progress</Text>
+            <ProgressBar progress={overallProgress / 100} color="#2196F3" width={null} style={bookdetailstyles.progressBar} height={10} />
+            <Text style={bookdetailstyles.progressText}>{Math.round(overallProgress)}% Complete</Text>
+          </View>
+
+          {/* Chapter List Component */}
+          {chapters.length > 0 && (
+            <View style={bookdetailstyles.chapterListContainer}>
+              <ChapterList chapters={chapters} navigation={navigation} onChapterUnlocked={handleChapterUnlocked} />
+            </View>
+          )}
         </View>
-      </ScrollView>
+      )}
+    </>
+  );
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <FlatList
+        data={[]} // Empty since comments are rendered in the header and below.
+        ListHeaderComponent={
+          <>
+            {renderHeader()}
+            {!loading && <CommentsList bookId={book.id} />}
+          </>
+        }
+        style={bookdetailstyles.commentSection}
+      />
     </KeyboardAvoidingView>
   );
 }
-
-const localstyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  contentContainer: {
-    padding: 15,
-    paddingBottom: 30,
-  },
-  topBar: {
-    backgroundColor: "#2c3e50",
-    paddingTop: Platform.OS === "ios" ? 40 : 10,
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 10,
-  },
-  backText: {
-    color: "white",
-    marginLeft: 10,
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  card: {
-    flexDirection: "row",
-    backgroundColor: "white",
-    borderRadius: 10,
-    padding: 15,
-    marginTop: 10,
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  bookCover: {
-    width: width * 0.3,
-    height: width * 0.45,
-    borderRadius: 8,
-  },
-  details: {
-    flex: 1,
-    marginLeft: 15,
-    position: "relative",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 5,
-  },
-  author: {
-    fontSize: 16,
-    color: "#555",
-    marginBottom: 5,
-  },
-  category: {
-    fontSize: 14,
-    color: "#777",
-    marginBottom: 10,
-  },
-  description: {
-    fontSize: 14,
-    color: "#333",
-    lineHeight: 20,
-  },
-  readMoreButton: {
-    marginTop: 5,
-    alignSelf: "flex-start",
-  },
-  readMoreText: {
-    color: "#3498db",
-    fontWeight: "600",
-  },
-  favoriteButton: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    padding: 5,
-  },
-  // Progress bar styles
-  progressContainer: {
-    marginTop: 20,
-    backgroundColor: "white",
-    borderRadius: 10,
-    padding: 15,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
-  progressTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-  progressBar: {
-    width: "100%",
-    height: 10,
-  },
-  progressText: {
-    marginTop: 5,
-    fontSize: 14,
-    color: "#666",
-    textAlign: "right",
-  },
-  chapterListContainer: {
-    marginTop: 20,
-    backgroundColor: "white",
-    borderRadius: 10,
-    padding: 15,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
-  commentSection: {
-    marginTop: 25,
-    backgroundColor: "white",
-    borderRadius: 10,
-    padding: 15,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
-  commentTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    paddingBottom: 10,
-  },
-  comment: {
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    marginBottom: 5,
-  },
-  noComments: {
-    fontStyle: "italic",
-    color: "#888",
-    textAlign: "center",
-    padding: 20,
-  },
-  commentInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
-    paddingTop: 15,
-  },
-  commentInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 10,
-    borderRadius: 20,
-    maxHeight: 100,
-    backgroundColor: "#f9f9f9",
-  },
-  postButton: {
-    backgroundColor: "#3498db",
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    marginLeft: 10,
-    borderRadius: 20,
-  },
-  postButtonText: {
-    color: "white",
-    fontWeight: "bold",
-  },
-});

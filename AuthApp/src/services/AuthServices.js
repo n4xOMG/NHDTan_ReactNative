@@ -45,6 +45,17 @@ export const resetPassword = async (email, password) => {
     throw error;
   }
 };
+
+export const getCurrentUserFromToken = async () => {
+  try {
+    const response = await api.get(`${API_BASE_URL}/api/user/profile`);
+    return response.data;
+  } catch (error) {
+    console.error("API error:", error.message);
+    throw error;
+  }
+};
+
 export const updateUserProfile = async (reqData) => {
   try {
     console.log("API called with data:", reqData);
