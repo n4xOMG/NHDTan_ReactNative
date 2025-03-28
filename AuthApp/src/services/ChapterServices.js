@@ -23,6 +23,16 @@ export const getChapterById = async ({ token, chapterId }) => {
   }
 };
 
+export const getReadingProgress = async ({ chapterId }) => {
+  try {
+    const response = await api.get(`${API_BASE_URL}/api/reading-progress/chapters/${chapterId}`);
+    return response.data; // Returns ReadingProgressDTO
+  } catch (error) {
+    console.error("Error fetching reading progress:", error);
+    throw error;
+  }
+};
+
 export const saveReadingProgress = async ({ chapterId, progress }) => {
   try {
     const response = await api.post(`${API_BASE_URL}/api/chapters/${chapterId}/progress`, {

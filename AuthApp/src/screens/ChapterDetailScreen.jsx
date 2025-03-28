@@ -1,53 +1,37 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Dimensions, Image, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { AntDesign } from "@expo/vector-icons";
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, AppState, Dimensions, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { RenderHTML } from "react-native-render-html";
 import { useDispatch, useSelector } from "react-redux";
-import { updateReadingProgress } from "../redux/slices/bookSlice";
-import { getChapterById, likeChapter } from "../services/ChapterServices";
-import { chapterdetailstyles } from "../style/chapterdetailstyles";
-import FloatingNavbar from "../components/FloatingNavbar";
 import CommentModal from "../components/CommentModal";
+import FloatingNavbar from "../components/FloatingNavbar";
+import { updateReadingProgress } from "../redux/slices/bookSlice";
+import { getChapterById, getReadingProgress, likeChapter } from "../services/ChapterServices";
+import { chapterdetailstyles } from "../style/chapterdetailstyles";
 
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
+
 const ChapterDetailScreen = ({ route, navigation }) => {
   const { chapterId } = route.params || {};
-  const [scrollProgress, setScrollProgress] = useState(0);
   const [chapter, setChapter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const scrollViewRef = useRef(null);
-  const contentHeightRef = useRef(0);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const [showNavbar, setShowNavbar] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [hasUserScrolled, setHasUserScrolled] = useState(false); // Track if user has scrolled
 
+  const scrollViewRef = useRef(null);
+  const initialScrollDone = useRef(false);
   const dispatch = useDispatch();
   const isLoggedIn = useSelector((state) => state.auth.isLoggedIn);
   const userToken = useSelector((state) => state.auth.token);
+  const screenHeight = Dimensions.get("window").height;
 
-  const saveProgress = useCallback(
-    (progress = scrollProgress) => {
-      if (!isLoggedIn || !chapterId) return;
-      dispatch(updateReadingProgress({ chapterId, progress: Math.round(progress * 100) }));
-    },
-    [chapterId, isLoggedIn, dispatch, scrollProgress]
-  );
-
-  const handleScroll = (event) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const scrollableHeight = contentSize.height - layoutMeasurement.height;
-    if (scrollableHeight > 0) {
-      const progress = Math.min(1, Math.max(0, contentOffset.y / scrollableHeight));
-      setScrollProgress(progress);
-    }
-  };
-
-  const onContentSizeChange = (contentWidth, contentHeight) => {
-    contentHeightRef.current = contentHeight;
-  };
-
+  // Fetch chapter and reading progress
   useEffect(() => {
-    const fetchChapter = async () => {
+    const loadChapter = async () => {
       if (!chapterId) {
         setError("No chapter ID provided");
         setLoading(false);
@@ -55,76 +39,147 @@ const ChapterDetailScreen = ({ route, navigation }) => {
       }
       setLoading(true);
       try {
-        const response =
-          isLoggedIn && userToken
-            ? await getChapterById({ token: userToken, chapterId })
-            : await getChapterById({ token: null, chapterId });
-        setChapter(response);
-        setError(null);
+        const chapterData = await getChapterById({ token: isLoggedIn ? userToken : null, chapterId });
+        setChapter(chapterData);
+
+        if (isLoggedIn && userToken) {
+          const progressData = await getReadingProgress({ token: userToken, chapterId });
+          if (progressData?.progress > 0) {
+            // Only set if progress is meaningful
+            const initialProgress = progressData.progress / 100;
+            console.log("Progress data:", progressData);
+            setScrollProgress(initialProgress);
+          }
+        }
       } catch (err) {
+        console.error("Error loading chapter:", err);
         setError("Failed to load chapter");
       } finally {
         setLoading(false);
       }
     };
-    fetchChapter();
+    loadChapter();
   }, [chapterId, isLoggedIn, userToken]);
 
+  // Auto-scroll when content height and progress are ready
   useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", () => {
-      saveProgress(scrollProgress);
-    });
-    return unsubscribe;
-  }, [navigation, scrollProgress, saveProgress]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      if (nextAppState === "background" || nextAppState === "inactive") {
-        saveProgress(scrollProgress);
-      }
-    });
-    return () => subscription.remove();
-  }, [scrollProgress, saveProgress]);
-
-  const renderContent = () => {
-    if (loading) return <Text style={chapterdetailstyles.loadingText}>Loading...</Text>;
-    if (error) return <Text style={chapterdetailstyles.errorText}>{error}</Text>;
-    const htmlContent = chapter?.content || "";
-    return (
-      // Tap content to toggle navbar visibility
-      <Pressable onPress={() => setShowNavbar((prev) => !prev)}>
-        <RenderHTML
-          source={{ html: htmlContent }}
-          contentWidth={width - 30}
-          tagsStyles={{ p: { fontSize: 16, lineHeight: 24, color: "#333", marginBottom: 10 } }}
-          renderersProps={{ defaultTextProps: { selectable: true } }}
-        />
-      </Pressable>
+    console.log(
+      "Auto-scroll check - Loading:",
+      loading,
+      "Content Height:",
+      contentHeight,
+      "Scroll Progress:",
+      scrollProgress,
+      "Initial Scroll Done:",
+      initialScrollDone.current,
+      "Has User Scrolled:",
+      hasUserScrolled
     );
+    // Only scroll if content height exceeds screen height, progress is set from API, and user hasn’t scrolled
+    if (!loading && contentHeight > screenHeight && scrollProgress > 0 && !initialScrollDone.current && !hasUserScrolled) {
+      scrollToProgress(scrollProgress);
+      initialScrollDone.current = true;
+    }
+  }, [loading, contentHeight, scrollProgress, screenHeight, hasUserScrolled]);
+
+  // Handle scroll and progress calculation
+  const handleScroll = (event) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const scrollableHeight = contentSize.height - layoutMeasurement.height;
+    if (scrollableHeight > 0) {
+      const progress = Math.min(1, contentOffset.y / scrollableHeight);
+      setScrollProgress(progress);
+      setHasUserScrolled(true); // Mark that user has scrolled
+    }
   };
 
-  const handleToggleFavourite = async () => {
+  // Save progress when leaving or app state changes
+  useEffect(() => {
+    const saveOnExit = () => {
+      if (isLoggedIn && chapterId) {
+        dispatch(updateReadingProgress({ chapterId, progress: Math.round(scrollProgress * 100) }));
+      }
+    };
+
+    const unsubscribe = navigation.addListener("beforeRemove", saveOnExit);
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") saveOnExit();
+    });
+
+    return () => {
+      unsubscribe();
+      appStateSubscription.remove();
+    };
+  }, [navigation, scrollProgress, isLoggedIn, chapterId, dispatch]);
+
+  // Scroll to a specific progress point
+  const scrollToProgress = (progress) => {
+    if (scrollViewRef.current && contentHeight > 0) {
+      const scrollableHeight = contentHeight - screenHeight;
+      if (scrollableHeight > 0) {
+        const scrollPosition = scrollableHeight * progress;
+        console.log(
+          "Scrolling to:",
+          scrollPosition,
+          "Progress:",
+          progress,
+          "Content Height:",
+          contentHeight,
+          "Screen Height:",
+          screenHeight
+        );
+        setTimeout(() => {
+          scrollViewRef.current.scrollTo({ y: scrollPosition, animated: true });
+        }, 500);
+      } else {
+        console.log("Scrollable height is 0 or negative:", scrollableHeight);
+      }
+    } else {
+      console.log("ScrollView ref or content height not ready:", { scrollViewRef: !!scrollViewRef.current, contentHeight });
+    }
+  };
+
+  const onContentSizeChange = (contentWidth, contentHeight) => {
+    console.log("Content size changed - Width:", contentWidth, "Height:", contentHeight);
+    setContentHeight(contentHeight);
+  };
+
+  const toggleFavourite = async () => {
     try {
       const isLiked = await likeChapter(chapterId);
-      // Update chapter state with new like value:
       setChapter((prev) => ({ ...prev, isLikedByCurrentUser: isLiked }));
     } catch (err) {
       console.error("Error liking chapter:", err);
     }
   };
 
+  const renderContent = () => {
+    if (loading) return <ActivityIndicator size="large" color="#3498db" />;
+    if (error) return <Text style={chapterdetailstyles.errorText}>{error}</Text>;
+    return (
+      <TouchableOpacity onPress={() => setShowNavbar(!showNavbar)} activeOpacity={1}>
+        <RenderHTML
+          source={{ html: chapter?.content || "" }}
+          contentWidth={width - 30}
+          tagsStyles={{ p: { fontSize: 16, lineHeight: 24, color: "#333", marginBottom: 10 } }}
+        />
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={chapterdetailstyles.container}>
       <View style={chapterdetailstyles.topBar}>
-        <View style={chapterdetailstyles.backButton}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <AntDesign name="arrowleft" size={24} color="white" />
-          </TouchableOpacity>
+        <TouchableOpacity style={chapterdetailstyles.backButton} onPress={() => navigation.goBack()}>
+          <AntDesign name="arrowleft" size={24} color="white" />
           <Text style={chapterdetailstyles.backText}>Back</Text>
-        </View>
+        </TouchableOpacity>
         <Text style={chapterdetailstyles.topBarTitle}>
           Chapter {chapter?.chapterNum || ""}: {chapter?.title || ""}
         </Text>
+        <TouchableOpacity onPress={() => scrollToProgress(scrollProgress)}>
+          <Text style={{ color: "white", marginRight: 10 }}>Scroll to Last Progress</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -137,19 +192,17 @@ const ChapterDetailScreen = ({ route, navigation }) => {
         <View style={chapterdetailstyles.contentContainer}>{renderContent()}</View>
       </ScrollView>
 
-      {/* Floating navbar component */}
       {showNavbar && (
         <FloatingNavbar
           navigation={navigation}
           scrollProgress={scrollProgress}
           chapter={chapter}
-          onToggleFavourite={handleToggleFavourite}
+          onToggleFavourite={toggleFavourite}
           onShowComments={() => setShowCommentModal(true)}
           onShowChapterList={() => navigation.navigate("ChapterList", { bookId: chapter?.bookId })}
         />
       )}
 
-      {/* Comment modal (overlaid) */}
       <CommentModal visible={showCommentModal} onClose={() => setShowCommentModal(false)} chapterId={chapterId} />
     </View>
   );
