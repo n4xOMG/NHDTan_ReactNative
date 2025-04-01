@@ -1,8 +1,8 @@
-import { addReply, deleteCommentThunk, editCommentThunk, toggleLike } from "../redux/slices/commentSlice";
-import { AntDesign } from "@expo/vector-icons";
 import React, { memo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
+import { AntDesign } from "@expo/vector-icons";
+import { addReply, deleteCommentThunk, editCommentThunk, toggleLike } from "../redux/slices/commentSlice";
 import { commentstyles } from "../style/commentstyles";
 
 const CommentItem = memo(({ comment, type, id }) => {
@@ -13,7 +13,12 @@ const CommentItem = memo(({ comment, type, id }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(comment.content);
 
-  const handleLike = () => dispatch(toggleLike({ commentId: comment.id, type }));
+  const isOwnComment = currentUser?.id === comment.user?.id;
+
+  const handleLike = () => {
+    dispatch(toggleLike({ commentId: comment.id, type }));
+  };
+
   const handleReply = () => {
     if (replyText.trim()) {
       dispatch(addReply({ type, id, parentCommentId: comment.id, data: { content: replyText } }));
@@ -21,15 +26,19 @@ const CommentItem = memo(({ comment, type, id }) => {
       setShowReply(false);
     }
   };
+
   const handleEdit = () => {
     if (editText.trim()) {
       dispatch(editCommentThunk({ commentId: comment.id, data: { content: editText }, type }));
       setIsEditing(false);
     }
   };
-  const handleDelete = () => dispatch(deleteCommentThunk({ commentId: comment.id, type }));
 
-  const isOwnComment = currentUser?.id === comment.user?.id;
+  const handleDelete = () => {
+    if (window.confirm("Are you sure you want to delete this comment?")) {
+      dispatch(deleteCommentThunk({ commentId: comment.id, type }));
+    }
+  };
 
   return (
     <View style={[commentstyles.commentContainer, { backgroundColor: "#fff", borderRadius: 8, elevation: 1, marginBottom: 10 }]}>

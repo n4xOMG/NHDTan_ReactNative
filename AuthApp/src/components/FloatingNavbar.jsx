@@ -21,7 +21,7 @@ const FloatingNavbar = ({ navigation, scrollProgress, chapter, onToggleFavourite
           <AntDesign name="message1" size={24} color="#2196F3" />
         </TouchableOpacity>
         <TouchableOpacity onPress={onToggleFavourite}>
-          <AntDesign name={chapter?.isLikedByCurrentUser ? "heart" : "hearto"} size={24} color="#2196F3" />
+          <AntDesign name={chapter?.likedByCurrentUser ? "heart" : "hearto"} size={24} color="red" />
         </TouchableOpacity>
       </View>
     </View>

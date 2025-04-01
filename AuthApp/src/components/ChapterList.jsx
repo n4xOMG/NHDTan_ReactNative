@@ -6,7 +6,7 @@ import { useSelector } from "react-redux";
 import { unlockChapter } from "../services/ChapterServices";
 import { chapteritemstyles } from "../style/chapteritemstyles";
 
-const ChapterList = ({ chapters, navigation, onChapterUnlocked }) => {
+const ChapterList = ({ chapters, navigation, onChapterUnlocked, bookId }) => {
   const readingProgress = useSelector((state) => state.books.readingProgress);
   const user = useSelector((state) => state.auth.user);
 
@@ -58,7 +58,7 @@ const ChapterList = ({ chapters, navigation, onChapterUnlocked }) => {
   const handleChapterPress = (chapter) => {
     if (chapter.unlockedByUser || chapter.price === 0) {
       const chapterId = chapter.id;
-      navigation.navigate("ChapterDetail", { chapterId });
+      navigation.navigate("ChapterDetail", { chapterId, bookId });
     } else {
       handleUnlockChapter(chapter);
     }

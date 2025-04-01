@@ -29,7 +29,7 @@ export default function BookDetail({ route, navigation }) {
 
     const fetchFavStatus = async () => {
       try {
-        const res = await getUserFavStatus({ bookId: book.id });
+        const res = await getUserFavStatus({ bookId: book?.id });
         setIsFav(res);
       } catch (error) {
         console.error("Error fetching book liked status", error);
@@ -41,11 +41,11 @@ export default function BookDetail({ route, navigation }) {
       try {
         let chaptersResponse;
         if (isLoggedIn && userToken) {
-          chaptersResponse = await getChaptersByBookId({ token: userToken, bookId: book.id });
+          chaptersResponse = await getChaptersByBookId({ token: userToken, bookId: book?.id });
         } else {
-          chaptersResponse = await getChaptersByBookId({ token: null, bookId: book.id });
+          chaptersResponse = await getChaptersByBookId({ token: null, bookId: book?.id });
         }
-        const progressResult = await dispatch(fetchReadingProgressByBookId({ bookId: book.id })).unwrap();
+        const progressResult = await dispatch(fetchReadingProgressByBookId({ bookId: book?.id })).unwrap();
 
         setChapters(chaptersResponse);
         calculateOverallProgress(progressResult, chaptersResponse);
@@ -79,7 +79,7 @@ export default function BookDetail({ route, navigation }) {
     setShowFullDescription(!showFullDescription);
   };
 
-  const truncatedDescription = book.description?.length > 100 ? book.description.substring(0, 100) + "..." : book.description;
+  const truncatedDescription = book?.description?.length > 100 ? book?.description.substring(0, 100) + "..." : book?.description;
 
   const calculateOverallProgress = (progressData, chaptersData = chapters) => {
     if (!progressData || progressData.length === 0 || chaptersData.length === 0) {
@@ -113,14 +113,14 @@ export default function BookDetail({ route, navigation }) {
       ) : (
         <View style={bookdetailstyles.contentContainer}>
           <View style={bookdetailstyles.card}>
-            <Image source={{ uri: book.bookCover }} style={bookdetailstyles.bookCover} />
+            <Image source={{ uri: book?.bookCover }} style={bookdetailstyles.bookCover} />
             <View style={bookdetailstyles.details}>
-              <Text style={bookdetailstyles.title}>{book.title}</Text>
-              <Text style={bookdetailstyles.author}>by {book.authorName || book.author?.name}</Text>
-              <Text style={bookdetailstyles.category}>Category: {book.categoryName}</Text>
+              <Text style={bookdetailstyles.title}>{book?.title}</Text>
+              <Text style={bookdetailstyles.author}>by {book?.authorName || book?.author?.name}</Text>
+              <Text style={bookdetailstyles.category}>Category: {book?.categoryName}</Text>
               <View>
-                <Text style={bookdetailstyles.description}>{showFullDescription ? book.description : truncatedDescription}</Text>
-                {book.description?.length > 100 && (
+                <Text style={bookdetailstyles.description}>{showFullDescription ? book?.description : truncatedDescription}</Text>
+                {book?.description?.length > 100 && (
                   <TouchableOpacity onPress={toggleDescription} style={bookdetailstyles.readMoreButton}>
                     <Text style={bookdetailstyles.readMoreText}>{showFullDescription ? "Show less" : "Read more"}</Text>
                   </TouchableOpacity>
@@ -142,7 +142,7 @@ export default function BookDetail({ route, navigation }) {
           {/* Chapter List Component */}
           {chapters.length > 0 && (
             <View style={bookdetailstyles.chapterListContainer}>
-              <ChapterList chapters={chapters} navigation={navigation} onChapterUnlocked={handleChapterUnlocked} />
+              <ChapterList chapters={chapters} navigation={navigation} onChapterUnlocked={handleChapterUnlocked} bookId={book?.id} />
             </View>
           )}
         </View>
@@ -157,7 +157,7 @@ export default function BookDetail({ route, navigation }) {
         ListHeaderComponent={
           <>
             {renderHeader()}
-            {!loading && <CommentsList bookId={book.id} />}
+            {!loading && <CommentsList bookId={book?.id} />}
           </>
         }
         style={bookdetailstyles.commentSection}

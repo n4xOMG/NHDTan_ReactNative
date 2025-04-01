@@ -5,22 +5,25 @@ import { RenderHTML } from "react-native-render-html";
 import { useDispatch, useSelector } from "react-redux";
 import CommentModal from "../components/CommentModal";
 import FloatingNavbar from "../components/FloatingNavbar";
+import ChapterListModal from "../components/ChapterListModal"; // Adjust path
 import { updateReadingProgress } from "../redux/slices/bookSlice";
-import { getChapterById, getReadingProgress, likeChapter } from "../services/ChapterServices";
+import { getChapterById, getReadingProgress, likeChapter, getChaptersByBookId, toggleLikeChapter } from "../services/ChapterServices";
 import { chapterdetailstyles } from "../style/chapterdetailstyles";
 
 const { width } = Dimensions.get("window");
 
 const ChapterDetailScreen = ({ route, navigation }) => {
-  const { chapterId } = route.params || {};
+  const { chapterId, bookId } = route.params || {};
   const [chapter, setChapter] = useState(null);
+  const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [showNavbar, setShowNavbar] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
+  const [showChapterModal, setShowChapterModal] = useState(false);
   const [contentHeight, setContentHeight] = useState(0);
-  const [hasUserScrolled, setHasUserScrolled] = useState(false); // Track if user has scrolled
+  const [hasUserScrolled, setHasUserScrolled] = useState(false);
 
   const scrollViewRef = useRef(null);
   const initialScrollDone = useRef(false);
@@ -38,17 +41,22 @@ const ChapterDetailScreen = ({ route, navigation }) => {
         return;
       }
       setLoading(true);
+      setHasUserScrolled(false); // Reset user scroll state
+      initialScrollDone.current = false; // Reset scroll done flag
       try {
         const chapterData = await getChapterById({ token: isLoggedIn ? userToken : null, chapterId });
         setChapter(chapterData);
 
+        const res = await getChaptersByBookId({ token: userToken, bookId });
+        console.log("Fetched chapters:", res);
+        setChapters(res);
+
         if (isLoggedIn && userToken) {
           const progressData = await getReadingProgress({ token: userToken, chapterId });
           if (progressData?.progress > 0) {
-            // Only set if progress is meaningful
-            const initialProgress = progressData.progress / 100;
-            console.log("Progress data:", progressData);
-            setScrollProgress(initialProgress);
+            setScrollProgress(progressData.progress / 100);
+          } else {
+            setScrollProgress(0); // Explicitly reset if no progress
           }
         }
       } catch (err) {
@@ -59,7 +67,7 @@ const ChapterDetailScreen = ({ route, navigation }) => {
       }
     };
     loadChapter();
-  }, [chapterId, isLoggedIn, userToken]);
+  }, [chapterId, isLoggedIn, userToken, bookId]);
 
   // Auto-scroll when content height and progress are ready
   useEffect(() => {
@@ -75,7 +83,6 @@ const ChapterDetailScreen = ({ route, navigation }) => {
       "Has User Scrolled:",
       hasUserScrolled
     );
-    // Only scroll if content height exceeds screen height, progress is set from API, and user hasn’t scrolled
     if (!loading && contentHeight > screenHeight && scrollProgress > 0 && !initialScrollDone.current && !hasUserScrolled) {
       scrollToProgress(scrollProgress);
       initialScrollDone.current = true;
@@ -89,7 +96,7 @@ const ChapterDetailScreen = ({ route, navigation }) => {
     if (scrollableHeight > 0) {
       const progress = Math.min(1, contentOffset.y / scrollableHeight);
       setScrollProgress(progress);
-      setHasUserScrolled(true); // Mark that user has scrolled
+      setHasUserScrolled(true);
     }
   };
 
@@ -146,8 +153,8 @@ const ChapterDetailScreen = ({ route, navigation }) => {
 
   const toggleFavourite = async () => {
     try {
-      const isLiked = await likeChapter(chapterId);
-      setChapter((prev) => ({ ...prev, isLikedByCurrentUser: isLiked }));
+      const isLiked = await toggleLikeChapter(chapterId);
+      setChapter((prev) => ({ ...prev, likedByCurrentUser: isLiked }));
     } catch (err) {
       console.error("Error liking chapter:", err);
     }
@@ -177,9 +184,6 @@ const ChapterDetailScreen = ({ route, navigation }) => {
         <Text style={chapterdetailstyles.topBarTitle}>
           Chapter {chapter?.chapterNum || ""}: {chapter?.title || ""}
         </Text>
-        <TouchableOpacity onPress={() => scrollToProgress(scrollProgress)}>
-          <Text style={{ color: "white", marginRight: 10 }}>Scroll to Last Progress</Text>
-        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -199,11 +203,21 @@ const ChapterDetailScreen = ({ route, navigation }) => {
           chapter={chapter}
           onToggleFavourite={toggleFavourite}
           onShowComments={() => setShowCommentModal(true)}
-          onShowChapterList={() => navigation.navigate("ChapterList", { bookId: chapter?.bookId })}
+          onShowChapterList={() => setShowChapterModal(true)}
         />
       )}
 
       <CommentModal visible={showCommentModal} onClose={() => setShowCommentModal(false)} chapterId={chapterId} />
+      <ChapterListModal
+        visible={showChapterModal}
+        onClose={() => setShowChapterModal(false)}
+        chapters={chapters}
+        bookId={bookId}
+        navigation={navigation}
+        onChapterUnlocked={(id, updatedData) => {
+          setChapters((prev) => prev.map((ch) => (ch.id === id ? updatedData : ch)));
+        }}
+      />
     </View>
   );
 };

@@ -1,20 +1,14 @@
+// components/TopBarNavigation.js
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, StyleSheet } from "react-native";
 import Icon from "react-native-vector-icons/FontAwesome";
+import { useNavigation } from "@react-navigation/native";
 import { styles } from "../../style/styles";
+import NotificationIcon from "../NotificationIcon";
 
 const TopBarNavigation = ({ onSearch }) => {
-  const [dropdownVisible, setDropdownVisible] = useState(false);
+  const navigation = useNavigation();
   const [searchQuery, setSearchQuery] = useState("");
-
-  const handleMenuAction = (action) => {
-    setDropdownVisible(false);
-    if (action === "edit") {
-      console.log("Navigate to Edit Profile");
-    } else if (action === "logout") {
-      console.log("Log out user");
-    }
-  };
 
   const handleSearch = (text) => {
     setSearchQuery(text);
@@ -24,39 +18,23 @@ const TopBarNavigation = ({ onSearch }) => {
   };
 
   return (
-    <>
-      <View style={styles.topBar}>
-        <Text style={styles.topBarTitle}>My Book App</Text>
-        <View style={localStyles.searchContainer}>
-          <TextInput
-            style={localStyles.searchInput}
-            placeholder="Search books..."
-            placeholderTextColor="#888"
-            value={searchQuery}
-            onChangeText={handleSearch}
-          />
-          <Icon name="search" size={20} color="#888" style={localStyles.searchIcon} />
-        </View>
-        <TouchableOpacity style={styles.userIconContainer} onPress={() => setDropdownVisible(true)}>
-          <Icon name="user-circle" size={30} color="white" />
-        </TouchableOpacity>
+    <View style={styles.topBar}>
+      <Text style={styles.topBarTitle}>My Book App</Text>
+      <View style={localStyles.searchContainer}>
+        <TextInput
+          style={localStyles.searchInput}
+          placeholder="Search books..."
+          placeholderTextColor="#888"
+          value={searchQuery}
+          onChangeText={handleSearch}
+        />
+        <Icon name="search" size={20} color="#888" style={localStyles.searchIcon} />
       </View>
-
-      {/* Dropdown Menu */}
-      <Modal transparent={true} visible={dropdownVisible} animationType="fade" onRequestClose={() => setDropdownVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setDropdownVisible(false)} />
-          <View style={styles.dropdownMenu}>
-            <TouchableOpacity style={styles.dropdownItem} onPress={() => handleMenuAction("edit")}>
-              <Text style={styles.dropdownText}>Edit Profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.dropdownItem} onPress={() => handleMenuAction("logout")}>
-              <Text style={styles.dropdownText}>Log Out</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </>
+      <NotificationIcon />
+      <TouchableOpacity style={styles.userIconContainer} onPress={() => navigation.navigate("Profile")}>
+        <Icon name="user-circle" size={30} color="white" />
+      </TouchableOpacity>
+    </View>
   );
 };
 

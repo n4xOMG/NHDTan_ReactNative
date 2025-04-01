@@ -54,9 +54,9 @@ export const unlockChapter = async ({ chapterId }) => {
     throw error;
   }
 };
-export const likeChapter = async (chapterId) => {
+export const toggleLikeChapter = async (chapterId) => {
   try {
-    const response = await api.post(`${API_BASE_URL}/api/chapters/${chapterId}/like`);
+    const response = await api.put(`${API_BASE_URL}/api/chapters/${chapterId}/like`);
     return response.data;
   } catch (error) {
     console.error("Error liking chapter:", error);

@@ -2,6 +2,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "./slices/authSlice";
 import bookReducer from "./slices/bookSlice";
 import commentReducer from "./slices/commentSlice";
+import notificationReducer from "./slices/notificationSlice";
 import { persistStore, persistReducer } from "redux-persist";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -18,6 +19,7 @@ export const store = configureStore({
     auth: persistedAuthReducer,
     books: bookReducer,
     comments: commentReducer,
+    notifications: notificationReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -2,21 +2,32 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { addComment, fetchComments, resetComments } from "../redux/slices/commentSlice";
-import CommentItem from "./CommentItem";
 import { commentstyles } from "../style/commentstyles";
+import CommentItem from "./CommentItem";
 
 const CommentsList = ({ bookId, chapterId, postId }) => {
   const dispatch = useDispatch();
   const [commentText, setCommentText] = useState("");
-  const { comments, page, totalPages, loading, error, type } = useSelector((state) => state.comments);
 
+  // Determine which type of comments we're displaying
   const commentType = bookId ? "book" : chapterId ? "chapter" : "post";
   const id = bookId || chapterId || postId;
 
+  // Select the appropriate branch of the state
+  const commentState = useSelector((state) => state.comments[commentType]);
+  const { comments, page, totalPages, loading, error } = commentState || {
+    comments: [],
+    page: 0,
+    totalPages: 0,
+    loading: false,
+    error: null,
+  };
+
+  // Load comments when component mounts or IDs change
   useEffect(() => {
-    if (type !== commentType) dispatch(resetComments());
+    dispatch(resetComments({ type: commentType }));
     dispatch(fetchComments({ type: commentType, id, page: 0 }));
-  }, [bookId, chapterId, postId]);
+  }, [bookId, chapterId, postId, dispatch]);
 
   const loadMore = () => {
     if (!loading && page < totalPages) {
