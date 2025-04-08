@@ -1,62 +1,41 @@
-// components/TopBarNavigation.js
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, TextInput, StyleSheet } from "react-native";
-import Icon from "react-native-vector-icons/FontAwesome";
+import { View, TextInput, TouchableOpacity, Text } from "react-native";
+import Icon from "react-native-vector-icons/Ionicons";
 import { useNavigation } from "@react-navigation/native";
-import { styles } from "../../style/styles";
-import NotificationIcon from "../NotificationIcon";
+import { modernStyles, colors } from "../../style/modernStyles";
 
 const TopBarNavigation = ({ onSearch }) => {
+  const [searchText, setSearchText] = useState("");
   const navigation = useNavigation();
-  const [searchQuery, setSearchQuery] = useState("");
 
-  const handleSearch = (text) => {
-    setSearchQuery(text);
-    if (onSearch) {
-      onSearch(text);
-    }
+  const handleChange = (text) => {
+    setSearchText(text);
+    onSearch(text);
   };
 
   return (
-    <View style={styles.topBar}>
-      <Text style={styles.topBarTitle}>My Book App</Text>
-      <View style={localStyles.searchContainer}>
+    <View style={modernStyles.topBar}>
+      <Text style={modernStyles.title}>BookStore</Text>
+      <View style={modernStyles.searchBar}>
+        <Icon name="search-outline" size={20} color={colors.darkGray} />
         <TextInput
-          style={localStyles.searchInput}
+          style={{ flex: 1, marginLeft: 8, color: colors.text.primary }}
           placeholder="Search books..."
-          placeholderTextColor="#888"
-          value={searchQuery}
-          onChangeText={handleSearch}
+          placeholderTextColor={colors.mediumGray}
+          value={searchText}
+          onChangeText={handleChange}
         />
-        <Icon name="search" size={20} color="#888" style={localStyles.searchIcon} />
+        {searchText.length > 0 && (
+          <TouchableOpacity onPress={() => handleChange("")}>
+            <Icon name="close-circle" size={20} color={colors.darkGray} />
+          </TouchableOpacity>
+        )}
       </View>
-      <NotificationIcon />
-      <TouchableOpacity style={styles.userIconContainer} onPress={() => navigation.navigate("Profile")}>
-        <Icon name="user-circle" size={30} color="white" />
+      <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={{ padding: 8 }}>
+        <Icon name="person-circle-outline" size={28} color={colors.primary} />
       </TouchableOpacity>
     </View>
   );
 };
-
-const localStyles = StyleSheet.create({
-  searchContainer: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    marginHorizontal: 10,
-    paddingHorizontal: 10,
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 16,
-    color: "#333",
-  },
-  searchIcon: {
-    marginLeft: 5,
-  },
-});
 
 export default TopBarNavigation;

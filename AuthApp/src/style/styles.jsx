@@ -4,6 +4,7 @@ const { width } = Dimensions.get("window");
 
 export const styles = StyleSheet.create({
   container: {
+    paddingTop: 10,
     flex: 1,
     backgroundColor: "#f5f5f5",
   },
@@ -17,7 +18,7 @@ export const styles = StyleSheet.create({
     padding: 5,
   },
   topBar: {
-    height: 60,
+    overflow: "visible",
     backgroundColor: "#2c3e50",
     flexDirection: "row",
     alignItems: "center",

@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { getBooks, getTop10LikedBooks, getUserReadingProgressByBookId } from "../../services/BookServices";
+import { getBookCount, getBooks, getTop10LikedBooks, getUserReadingProgressByBookId } from "../../services/BookServices";
 import { saveReadingProgress } from "../../services/ChapterServices";
 
 export const fetchBooks = createAsyncThunk("books/fetchBooks", async (page, { rejectWithValue }) => {
@@ -46,6 +46,15 @@ export const fetchReadingProgressByBookId = createAsyncThunk(
   }
 );
 
+export const fetchBookCount = createAsyncThunk("books/fetchBookCount", async (_, { rejectWithValue }) => {
+  try {
+    const response = await getBookCount();
+    return response;
+  } catch (error) {
+    return rejectWithValue(error.message);
+  }
+});
+
 const initialState = {
   books: [],
   top10LikedBooks: [],
@@ -55,6 +64,7 @@ const initialState = {
   error: null,
   page: 1,
   searchQuery: "",
+  bookCount: 0,
 };
 
 const bookSlice = createSlice({
@@ -137,6 +147,18 @@ const bookSlice = createSlice({
         state.readingProgress = action.payload;
       })
       .addCase(fetchReadingProgressByBookId.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(fetchBookCount.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchBookCount.fulfilled, (state, action) => {
+        state.loading = false;
+        state.bookCount = action.payload;
+      })
+      .addCase(fetchBookCount.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

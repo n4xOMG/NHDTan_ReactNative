@@ -11,6 +11,39 @@ export const getBooks = async () => {
   }
 };
 
+// Add a new function to update a book
+export const updateBook = async (book) => {
+  try {
+    const response = await api.put(`${API_BASE_URL}/books/${book.id}`, book);
+    return response.data;
+  } catch (error) {
+    console.error("Error updating book:", error);
+    throw error;
+  }
+};
+
+// Add a new function to create a book
+export const createBook = async (book) => {
+  try {
+    const response = await api.post(`${API_BASE_URL}/books`, book);
+    return response.data;
+  } catch (error) {
+    console.error("Error creating book:", error);
+    throw error;
+  }
+};
+
+// Add a new function to delete a book
+export const deleteBook = async (bookId) => {
+  try {
+    const response = await api.delete(`${API_BASE_URL}/books/${bookId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error deleting book:", error);
+    throw error;
+  }
+};
+
 export const getTop10LikedBooks = async () => {
   try {
     const response = await axios.get(`${API_BASE_URL}/books/top-likes`);
@@ -57,6 +90,16 @@ export const toggleUserFavStatus = async ({ bookId }) => {
     return response.data;
   } catch (error) {
     console.error("Error during toggling user fav status:", error);
+    throw error;
+  }
+};
+
+export const getBookCount = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/books/count`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching book count:", error);
     throw error;
   }
 };
