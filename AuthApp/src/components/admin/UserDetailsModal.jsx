@@ -1,8 +1,161 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, View, Text, StyleSheet, TouchableOpacity, FlatList, ScrollView, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { getUserActivityLogs } from "../../services/UserServices";
+import { getUserRecentComments } from "../../services/CommentService";
 
 const UserDetailsModal = ({ visible, onClose, user, details }) => {
+  // Debug helper function
+  const safeLog = (message, data) => {
+    try {
+      console.log(message, data ? JSON.stringify(data) : "no data");
+    } catch (e) {
+      console.log(message, "Data cannot be stringified");
+    }
+  };
+
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logError, setLogError] = useState(null);
+  const [logPage, setLogPage] = useState(0);
+  const [logPagination, setLogPagination] = useState({
+    page: 0,
+    size: 20,
+    hasNext: false,
+    totalElements: 0,
+  });
+
+  const [userComments, setUserComments] = useState([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentsError, setCommentsError] = useState(null);
+
+  useEffect(() => {
+    if (visible && user) {
+      // Debug the user object
+      safeLog("UserDetailsModal visible with user:", user);
+
+      // Reset state when modal becomes visible with a user
+      setActivityLogs([]);
+      setLogPage(0);
+      setLogError(null);
+      setLogPagination({
+        page: 0,
+        size: 20,
+        hasNext: false,
+        totalElements: 0,
+      });
+
+      // Then fetch data
+      if (user.username || user.email) {
+        safeLog("Fetching activity logs for user:", { email: user.email, username: user.username });
+        fetchActivityLogs();
+      } else {
+        safeLog("No username or email available to fetch logs");
+      }
+
+      if (user.id) {
+        safeLog("Fetching comments for user ID:", user.id);
+        fetchUserComments();
+      } else {
+        safeLog("No user ID available to fetch comments");
+      }
+    }
+  }, [visible, user]);
+
+  const fetchActivityLogs = async (page = 0) => {
+    if (!user) return;
+
+    // Prefer email, but fall back to username if email not available
+    const userIdentifier = user.email || user.username;
+    if (!userIdentifier) {
+      console.warn("No user identifier (email or username) available for fetching logs");
+      setLogError("User identifier not available");
+      return;
+    }
+
+    setLoadingLogs(true);
+    setLogError(null);
+
+    try {
+      console.log(`Fetching logs for user: ${userIdentifier}, page: ${page}`);
+      const result = await getUserActivityLogs(userIdentifier, page, 20);
+
+      // Check if we got a valid result with logs
+      if (result && Array.isArray(result.logs)) {
+        if (page === 0) {
+          setActivityLogs(result.logs);
+        } else {
+          // Append logs for pagination
+          setActivityLogs((prevLogs) => [...prevLogs, ...result.logs]);
+        }
+
+        // Update pagination info
+        setLogPagination(
+          result.pagination || {
+            page: page,
+            size: 20,
+            hasNext: false,
+            totalElements: result.logs.length,
+          }
+        );
+        setLogPage(page);
+      } else {
+        console.warn("Invalid logs result format:", result);
+        setLogError("Invalid response format from server");
+      }
+    } catch (error) {
+      console.error("Error fetching activity logs:", error);
+      setLogError("Failed to load activity logs");
+      // Reset to empty array on error
+      if (page === 0) {
+        setActivityLogs([]);
+      }
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  const fetchUserComments = async () => {
+    if (!user || !user.id) {
+      safeLog("Cannot fetch comments: missing user or user.id");
+      return;
+    }
+
+    setLoadingComments(true);
+    setCommentsError(null);
+
+    try {
+      safeLog("Calling getUserRecentComments with ID:", user.id);
+      const comments = await getUserRecentComments(user.id);
+
+      if (!comments) {
+        throw new Error("Received null or undefined comments");
+      }
+
+      if (!Array.isArray(comments)) {
+        safeLog("Received non-array comments:", comments);
+        // Convert to array if not already one
+        const commentsArray = comments ? [comments] : [];
+        setUserComments(commentsArray);
+      } else {
+        safeLog(`Received ${comments.length} comments`);
+        setUserComments(comments);
+      }
+    } catch (error) {
+      console.error("Error fetching user comments:", error);
+      setCommentsError("Failed to load user comments");
+      setUserComments([]); // Ensure we reset to empty array
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const loadMoreLogs = () => {
+    if (logPagination.hasNext && !loadingLogs) {
+      fetchActivityLogs(logPage + 1);
+    }
+  };
+
   if (!user) return null;
 
   const formatDate = (dateString) => {
@@ -17,37 +170,55 @@ const UserDetailsModal = ({ visible, onClose, user, details }) => {
   const renderPurchaseItem = ({ item }) => (
     <View style={styles.itemContainer}>
       <View style={styles.itemHeader}>
-        <Text style={styles.itemTitle}>{item.product}</Text>
-        <Text style={styles.itemPrice}>${item.amount.toFixed(2)}</Text>
+        <Text style={styles.itemTitle}>{item.product || "Credit Package"}</Text>
+        <Text style={styles.itemPrice}>${item.price?.toFixed(2) || "N/A"}</Text>
       </View>
-      <Text style={styles.itemDate}>{formatDate(item.date)}</Text>
+      <Text style={styles.itemContent}>Credits: {item.creditAmount || "N/A"}</Text>
+      <Text style={styles.itemDate}>{formatDate(item.purchaseDate || item.date)}</Text>
     </View>
   );
 
-  const renderCommentItem = ({ item }) => (
-    <View style={styles.itemContainer}>
-      <Text style={styles.itemTitle}>On: {item.postTitle}</Text>
-      <Text style={styles.itemContent}>"{item.content}"</Text>
-      <Text style={styles.itemDate}>{formatDate(item.date)}</Text>
-    </View>
-  );
+  const renderCommentItem = ({ item }) => {
+    // Determine which context this comment belongs to
+    let contextTitle = "Unknown context";
+    if (item.bookId) {
+      contextTitle = `Book #${item.bookId}`;
+    } else if (item.chapterId) {
+      contextTitle = `Chapter #${item.chapterId}`;
+    } else if (item.postId) {
+      contextTitle = `Post #${item.postId}`;
+    }
 
-  const renderActivityItem = ({ item }) => (
-    <View style={styles.itemContainer}>
-      <View style={styles.activityRow}>
-        <View
-          style={[
-            styles.activityType,
-            item.type === "login" ? styles.loginActivity : item.type === "profile_update" ? styles.updateActivity : styles.otherActivity,
-          ]}
-        >
-          <Text style={styles.activityTypeText}>{item.type.replace("_", " ")}</Text>
+    return (
+      <View style={styles.itemContainer}>
+        <Text style={styles.itemTitle}>On: {contextTitle}</Text>
+        <Text style={styles.itemContent}>"{item.content}"</Text>
+        <Text style={styles.itemDate}>{formatDate(item.createdAt)}</Text>
+        {item.parentCommentId && <Text style={styles.replyInfo}>Reply to comment #{item.parentCommentId}</Text>}
+      </View>
+    );
+  };
+
+  const renderActivityItem = ({ item }) => {
+    if (!item) return null; // Skip rendering if item is undefined
+
+    return (
+      <View style={styles.itemContainer}>
+        <View style={styles.activityRow}>
+          <View
+            style={[
+              styles.activityType,
+              item.type === "login" ? styles.loginActivity : item.type === "profile_update" ? styles.updateActivity : styles.otherActivity,
+            ]}
+          >
+            <Text style={styles.activityTypeText}>{(item.type || "unknown").replace("_", " ")}</Text>
+          </View>
+          <Text style={styles.itemDate}>{formatDate(item.date || new Date())}</Text>
         </View>
-        <Text style={styles.itemDate}>{formatDate(item.date)}</Text>
+        <Text style={styles.itemContent}>{item.details || "No details available"}</Text>
       </View>
-      <Text style={styles.itemContent}>{item.details}</Text>
-    </View>
-  );
+    );
+  };
 
   return (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
@@ -99,37 +270,50 @@ const UserDetailsModal = ({ visible, onClose, user, details }) => {
 
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Recent Comments</Text>
-              {details.loading ? (
+              {loadingComments ? (
                 <ActivityIndicator size="small" color="#4a80f5" />
-              ) : details.error ? (
-                <Text style={styles.errorText}>{details.error}</Text>
-              ) : details.comments.length === 0 ? (
+              ) : commentsError ? (
+                <Text style={styles.errorText}>{commentsError}</Text>
+              ) : !userComments || userComments.length === 0 ? (
                 <Text style={styles.emptyText}>No comments found</Text>
               ) : (
                 <FlatList
-                  data={details.comments}
+                  data={userComments}
                   renderItem={renderCommentItem}
-                  keyExtractor={(item) => item.id.toString()}
+                  keyExtractor={(item, index) => item?.id?.toString() || `comment-${index}-${Date.now()}`}
                   scrollEnabled={false}
+                  removeClippedSubviews={false}
                 />
               )}
             </View>
 
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Recent Activities</Text>
-              {details.loading ? (
+              {loadingLogs && logPage === 0 ? (
                 <ActivityIndicator size="small" color="#4a80f5" />
-              ) : details.error ? (
-                <Text style={styles.errorText}>{details.error}</Text>
-              ) : details.activities.length === 0 ? (
+              ) : logError ? (
+                <Text style={styles.errorText}>{logError}</Text>
+              ) : activityLogs.length === 0 ? (
                 <Text style={styles.emptyText}>No activities found</Text>
               ) : (
-                <FlatList
-                  data={details.activities}
-                  renderItem={renderActivityItem}
-                  keyExtractor={(item) => item.id.toString()}
-                  scrollEnabled={false}
-                />
+                <>
+                  <FlatList
+                    data={activityLogs}
+                    renderItem={renderActivityItem}
+                    keyExtractor={(item, index) => item?.id || `fallback-key-${index}-${Date.now()}`}
+                    scrollEnabled={false}
+                    onEndReached={loadMoreLogs}
+                    onEndReachedThreshold={0.5}
+                    removeClippedSubviews={false} // May help with rendering issues
+                  />
+                  {loadingLogs && logPage > 0 && <ActivityIndicator size="small" color="#4a80f5" style={styles.loadingMore} />}
+                  {!loadingLogs && logPagination.hasNext && (
+                    <TouchableOpacity style={styles.loadMoreButton} onPress={loadMoreLogs}>
+                      <Text style={styles.loadMoreText}>Load More</Text>
+                    </TouchableOpacity>
+                  )}
+                  {!logPagination.hasNext && activityLogs.length > 0 && <Text style={styles.noMoreText}>No more activities</Text>}
+                </>
               )}
             </View>
           </ScrollView>
@@ -304,6 +488,33 @@ const styles = StyleSheet.create({
     textAlign: "center",
     padding: 10,
     fontStyle: "italic",
+  },
+  replyInfo: {
+    fontSize: 12,
+    color: "#666",
+    fontStyle: "italic",
+    marginTop: 3,
+  },
+  loadingMore: {
+    marginTop: 10,
+  },
+  loadMoreButton: {
+    padding: 10,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 5,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  loadMoreText: {
+    color: "#4a80f5",
+    fontWeight: "bold",
+  },
+  noMoreText: {
+    textAlign: "center",
+    color: "#999",
+    padding: 10,
+    fontStyle: "italic",
+    fontSize: 12,
   },
 });
 

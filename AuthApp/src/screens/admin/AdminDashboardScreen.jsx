@@ -7,7 +7,7 @@ import { fetchBookCount } from "../../redux/slices/bookSlice";
 import { getTotalSalesAmount } from "../../services/PurchaseServices";
 import { getReportCount } from "../../services/ReportServices";
 import { getUserCount } from "../../services/UserServices";
-import { getRecentLogs } from "../../services/LogServices";
+import { getPaginatedLogs } from "../../services/LogServices";
 import { admindashboardstyles } from "../../style/admindashboardstyles";
 
 const AdminDashboardScreen = ({ navigation }) => {
@@ -39,16 +39,24 @@ const AdminDashboardScreen = ({ navigation }) => {
     };
     fetchCounts();
 
-    // Fetch logs
+    // Fetch logs using the new paginated function
     const getLogs = async () => {
       setLogsLoading(true);
       try {
-        const logs = await getRecentLogs(3);
-        setRecentLogs(logs);
+        // Use getPaginatedLogs with a small page size to get recent logs
+        const logsData = await getPaginatedLogs(0, 3);
+        if (logsData && Array.isArray(logsData.logs)) {
+          setRecentLogs(logsData.logs);
+        } else {
+          console.warn("Invalid logs data format:", logsData);
+          setRecentLogs([]);
+        }
       } catch (error) {
         console.error("Error fetching logs:", error);
+        setRecentLogs([]);
+      } finally {
+        setLogsLoading(false);
       }
-      setLogsLoading(false);
     };
     getLogs();
   }, []);
@@ -93,61 +101,123 @@ const AdminDashboardScreen = ({ navigation }) => {
 
   // Helper function to parse log entries and extract meaningful information
   const parseLogEntry = (logEntry) => {
+    if (!logEntry) return defaultLogInfo();
+
     // This is a simple example. You might need to adjust based on your log format
     try {
-      // Extract timestamp - assuming log starts with a timestamp like "2023-06-15 14:30:45"
-      const timestamp = logEntry.substring(0, 19);
+      // For string log entries (old format)
+      if (typeof logEntry === "string") {
+        // Extract timestamp - assuming log starts with a timestamp like "2023-06-15 14:30:45"
+        const timestamp = logEntry.substring(0, 19);
 
-      // Extract action - this is an example, adjust based on your log format
-      let action = "System activity";
-      if (logEntry.includes("registered")) {
-        action = "New user registered";
-      } else if (logEntry.includes("book added")) {
-        action = "New book added";
-      } else if (logEntry.includes("purchase")) {
-        action = "New purchase";
-      } else if (logEntry.includes("report")) {
-        action = "New report submitted";
+        // ...existing string parsing code...
+
+        // Calculate time ago based on timestamp
+        return calculateTimeInfo(timestamp, logEntry);
       }
 
-      // Calculate time ago
-      const logTime = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now - logTime;
-      const diffMins = Math.round(diffMs / 60000);
-      const diffHours = Math.round(diffMs / 3600000);
-      const diffDays = Math.round(diffMs / 86400000);
+      // For object log entries (new paginated format)
+      if (typeof logEntry === "object") {
+        let timestamp;
+        let message;
 
-      let timeAgo;
-      if (diffMins < 60) {
-        timeAgo = `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
-      } else if (diffHours < 24) {
-        timeAgo = `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
-      } else {
-        timeAgo = `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
+        // Try to extract timestamp and message from the object
+        if (logEntry.date) {
+          timestamp = new Date(logEntry.date);
+        } else if (logEntry.timestamp) {
+          timestamp = new Date(logEntry.timestamp);
+        } else {
+          timestamp = new Date(); // Default to current time
+        }
+
+        if (logEntry.details) {
+          message = logEntry.details;
+        } else if (logEntry.message) {
+          message = logEntry.message;
+        } else {
+          message = "System activity"; // Default message
+        }
+
+        // Determine action and icon based on type or message content
+        let action = logEntry.type || "System activity";
+        let icon = determineIcon(action, message);
+
+        // Format timestamp as time ago
+        const timeAgo = formatTimeAgo(timestamp);
+
+        return { action, timeAgo, icon };
       }
 
-      // Determine the icon based on the action
-      let icon = "information-circle";
-      if (action.includes("user")) {
-        icon = "person-add";
-      } else if (action.includes("book")) {
-        icon = "book";
-      } else if (action.includes("purchase")) {
-        icon = "cash";
-      } else if (action.includes("report")) {
-        icon = "warning";
-      }
-
-      return { action, timeAgo, icon };
+      return defaultLogInfo();
     } catch (e) {
       console.error("Error parsing log entry:", e);
-      return {
-        action: "System activity",
-        timeAgo: "Recent",
-        icon: "information-circle",
-      };
+      return defaultLogInfo();
     }
+  };
+
+  const defaultLogInfo = () => ({
+    action: "System activity",
+    timeAgo: "Recent",
+    icon: "information-circle",
+  });
+
+  const determineIcon = (action, message) => {
+    let icon = "information-circle";
+    const lowerAction = action.toLowerCase();
+    const lowerMessage = message.toLowerCase();
+
+    if (lowerAction.includes("login") || lowerMessage.includes("login")) {
+      icon = "log-in";
+    } else if (lowerAction.includes("user") || lowerMessage.includes("user")) {
+      icon = "person";
+    } else if (lowerAction.includes("book") || lowerMessage.includes("book")) {
+      icon = "book";
+    } else if (lowerAction.includes("purchase") || lowerMessage.includes("purchase")) {
+      icon = "cash";
+    } else if (lowerAction.includes("report") || lowerMessage.includes("report")) {
+      icon = "warning";
+    }
+
+    return icon;
+  };
+
+  const formatTimeAgo = (date) => {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.round(diffMs / 60000);
+    const diffHours = Math.round(diffMs / 3600000);
+    const diffDays = Math.round(diffMs / 86400000);
+
+    if (diffMins < 60) {
+      return `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
+    } else {
+      return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
+    }
+  };
+
+  const calculateTimeInfo = (timestamp, content) => {
+    // Extract action based on content
+    let action = "System activity";
+    if (content.includes("registered")) {
+      action = "New user registered";
+    } else if (content.includes("book added")) {
+      action = "New book added";
+    } else if (content.includes("purchase")) {
+      action = "New purchase";
+    } else if (content.includes("report")) {
+      action = "New report submitted";
+    }
+
+    // Determine icon
+    let icon = determineIcon(action, content);
+
+    // Calculate time ago
+    const logTime = new Date(timestamp);
+    const timeAgo = formatTimeAgo(logTime);
+
+    return { action, timeAgo, icon };
   };
 
   return (

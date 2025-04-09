@@ -12,6 +12,7 @@ import {
   deleteComment,
   createChapterReplyComment,
   createPostReplyComment,
+  getUserRecentComments,
 } from "../../services/CommentService";
 
 // Create a helper for the comment state shape
@@ -98,11 +99,26 @@ export const deleteCommentThunk = createAsyncThunk("comments/deleteComment", asy
   }
 });
 
+// Fetch user's recent comments
+export const fetchUserRecentComments = createAsyncThunk("comments/fetchUserRecentComments", async (userId, { rejectWithValue }) => {
+  try {
+    const response = await getUserRecentComments(userId);
+    return { data: response };
+  } catch (error) {
+    return rejectWithValue({ error: error.message });
+  }
+});
+
 // Updated initial state with separate branches
 const initialState = {
   book: createCommentState(),
   chapter: createCommentState(),
   post: createCommentState(),
+  userRecent: {
+    comments: [],
+    loading: false,
+    error: null,
+  },
 };
 
 // Helper to update comments recursively
@@ -129,6 +145,13 @@ const commentSlice = createSlice({
       } else {
         return initialState;
       }
+    },
+    resetUserRecentComments: (state) => {
+      state.userRecent = {
+        comments: [],
+        loading: false,
+        error: null,
+      };
     },
   },
   extraReducers: (builder) => {
@@ -251,9 +274,23 @@ const commentSlice = createSlice({
         const { type, error } = action.payload;
         state[type].loading = false;
         state[type].error = error;
+      })
+
+      // Fetch User's Recent Comments
+      .addCase(fetchUserRecentComments.pending, (state) => {
+        state.userRecent.loading = true;
+        state.userRecent.error = null;
+      })
+      .addCase(fetchUserRecentComments.fulfilled, (state, action) => {
+        state.userRecent.loading = false;
+        state.userRecent.comments = action.payload.data;
+      })
+      .addCase(fetchUserRecentComments.rejected, (state, action) => {
+        state.userRecent.loading = false;
+        state.userRecent.error = action.payload.error;
       });
   },
 });
 
-export const { resetComments } = commentSlice.actions;
+export const { resetComments, resetUserRecentComments } = commentSlice.actions;
 export default commentSlice.reducer;

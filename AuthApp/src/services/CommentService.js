@@ -137,3 +137,74 @@ export const deleteComment = async (commentId) => {
     throw error;
   }
 };
+
+/**
+ * Fetches recent comments for a user
+ * @param {number|string} userId - The ID of the user
+ * @param {number} [page=0] - Page number (zero-based)
+ * @param {number} [size=10] - Number of comments per page
+ * @returns {Promise<Array>} - Array of comment objects
+ */
+export const getUserRecentComments = async (userId, page = 0, size = 10) => {
+  try {
+    console.log(`Fetching recent comments for userId: ${userId}, page: ${page}, size: ${size}`);
+
+    const response = await api.get(`${API_BASE_URL}/admin/comments/recent/${userId}`, {
+      params: { page, size },
+    });
+
+    console.log("User comments response:", response.data);
+
+    // Handle different response formats
+    if (response.data && response.data.content && Array.isArray(response.data.content)) {
+      // Paginated response format
+      return response.data.content;
+    } else if (Array.isArray(response.data)) {
+      // Direct array response
+      return response.data;
+    } else if (response.data) {
+      // Unexpected format but not null - convert to array
+      console.warn("Unexpected comment response format:", response.data);
+      return [response.data];
+    } else {
+      // No data or null data
+      console.warn("No comment data returned");
+      return [];
+    }
+  } catch (error) {
+    console.error("Error fetching user comments:", error);
+    // Return empty array instead of throwing
+    return [];
+  }
+};
+
+/**
+ * Creates a new comment
+ * @param {Object} commentData - Comment data object
+ * @returns {Promise<Object>} - Created comment object
+ */
+export const createComment = async (commentData) => {
+  try {
+    const response = await api.post(`${API_BASE_URL}/comments`, commentData);
+    return response.data;
+  } catch (error) {
+    console.error("Error creating comment:", error);
+    throw error;
+  }
+};
+
+/**
+ * Updates an existing comment
+ * @param {number|string} commentId - ID of the comment to update
+ * @param {Object} commentData - New comment data
+ * @returns {Promise<Object>} - Updated comment object
+ */
+export const updateComment = async (commentId, commentData) => {
+  try {
+    const response = await api.put(`${API_BASE_URL}/comments/${commentId}`, commentData);
+    return response.data;
+  } catch (error) {
+    console.error("Error updating comment:", error);
+    throw error;
+  }
+};

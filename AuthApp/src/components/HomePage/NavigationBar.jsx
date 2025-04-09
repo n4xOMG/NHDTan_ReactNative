@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Text } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import { useNavigation } from "@react-navigation/native";
 import { modernStyles, colors } from "../../style/modernStyles";
+import NotificationIcon from "../NotificationIcon";
 
 export const NavigationBar = () => {
   const navigation = useNavigation();
@@ -19,14 +20,14 @@ export const NavigationBar = () => {
         <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Books</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={{ alignItems: "center" }} onPress={() => navigation.navigate("Cart")}>
-        <Icon name="cart" size={24} color={colors.text.secondary} />
-        <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Cart</Text>
+      <TouchableOpacity style={{ alignItems: "center" }} onPress={() => navigation.navigate("Posts")}>
+        <Icon name="newspaper-outline" size={24} color={colors.text.secondary} />
+        <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Posts</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={{ alignItems: "center" }} onPress={() => navigation.navigate("Profile")}>
-        <Icon name="person" size={24} color={colors.text.secondary} />
-        <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Profile</Text>
+      <TouchableOpacity style={{ alignItems: "center" }} onPress={() => {}}>
+        <NotificationIcon />
+        <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Noti</Text>
       </TouchableOpacity>
     </View>
   );

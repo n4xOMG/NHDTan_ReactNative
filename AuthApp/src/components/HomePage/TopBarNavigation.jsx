@@ -3,10 +3,12 @@ import { View, TextInput, TouchableOpacity, Text } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import { useNavigation } from "@react-navigation/native";
 import { modernStyles, colors } from "../../style/modernStyles";
+import { useSelector } from "react-redux";
 
 const TopBarNavigation = ({ onSearch }) => {
   const [searchText, setSearchText] = useState("");
   const navigation = useNavigation();
+  const user = useSelector((state) => state.auth.user); // Assuming role is stored in auth redux state
 
   const handleChange = (text) => {
     setSearchText(text);
@@ -31,9 +33,16 @@ const TopBarNavigation = ({ onSearch }) => {
           </TouchableOpacity>
         )}
       </View>
-      <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={{ padding: 8 }}>
-        <Icon name="person-circle-outline" size={28} color={colors.primary} />
-      </TouchableOpacity>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        {user?.role.name === "ADMIN" && (
+          <TouchableOpacity onPress={() => navigation.navigate("Dashboard")} style={{ padding: 8 }} accessibilityLabel="Admin Dashboard">
+            <Icon name="shield-half-outline" size={26} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={{ padding: 8 }}>
+          <Icon name="person-circle-outline" size={28} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };

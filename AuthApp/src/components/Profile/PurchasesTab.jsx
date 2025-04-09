@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, FlatList, ActivityIndicator } from "react-native";
-import { getPurchaseHistory } from "../../services/PurchaseService";
+import { getPurchaseHistory } from "../../services/PurchaseServices";
 
 const PurchasesTab = () => {
   const [purchases, setPurchases] = useState([]);

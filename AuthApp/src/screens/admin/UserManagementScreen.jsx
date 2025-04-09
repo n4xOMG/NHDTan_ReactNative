@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, FlatList, ActivityIndicator, Alert, SafeAreaView, StatusBar } from "react-native";
 import { getAllUsers, updateUserStatus } from "../../services/UserServices";
+import { getPurchaseHistoryByUser } from "../../services/PurchaseServices"; // Add this import
 import { usermanagestyles } from "../../style/usermanagestyles";
 
 // Import components
@@ -224,39 +225,25 @@ const UserManagementScreen = () => {
   const fetchUserDetails = async (userId) => {
     setUserDetails((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      // In a real app, these would be separate API calls
-      // const purchases = await getUserPurchases(userId);
-      // const comments = await getUserComments(userId);
-      // const activities = await getUserActivities(userId);
+      // Fetch purchase history data
+      const purchaseHistory = await getPurchaseHistoryByUser(userId);
 
-      // Simulate API calls with mock data for now
-      setTimeout(() => {
-        const mockPurchases = [
-          { id: 1, date: "2023-05-15", product: "Premium Subscription", amount: 29.99 },
-          { id: 2, date: "2023-06-20", product: "E-Book Bundle", amount: 19.99 },
-        ];
-
-        const mockComments = [
-          { id: 1, date: "2023-06-01", content: "Great article!", postTitle: "Getting Started with React Native" },
-          { id: 2, date: "2023-06-15", content: "This was very helpful", postTitle: "Advanced State Management" },
-        ];
-
-        const mockActivities = [
-          { id: 1, date: "2023-06-25", type: "login", details: "Login from new device" },
-          { id: 2, date: "2023-06-26", type: "profile_update", details: "Changed profile picture" },
-        ];
-
-        setUserDetails({
-          purchaseHistory: mockPurchases,
-          comments: mockComments,
-          activities: mockActivities,
-          loading: false,
-          error: null,
-        });
-      }, 1000);
+      // Initialize userDetails with the purchase history data
+      setUserDetails({
+        purchaseHistory: Array.isArray(purchaseHistory) ? purchaseHistory : [],
+        comments: [], // Will be fetched by the UserDetailsModal component itself
+        activities: [], // Will be fetched by the UserDetailsModal component itself
+        loading: false,
+        error: null,
+      });
     } catch (error) {
       console.error("Error fetching user details:", error);
-      setUserDetails((prev) => ({ ...prev, loading: false, error: "Failed to load user details" }));
+      setUserDetails((prev) => ({
+        ...prev,
+        purchaseHistory: [],
+        loading: false,
+        error: "Failed to load user details",
+      }));
     }
   };
 
