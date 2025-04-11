@@ -1,13 +1,18 @@
 import React from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import { View, Text, Image, StyleSheet, TouchableOpacity, Alert, Modal } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/FontAwesome";
-import { likePost } from "../services/PostServices";
+import { useDispatch, useSelector } from "react-redux";
+import { toggleLikePost, removePost, updateExistingPost } from "../redux/slices/postSlice";
 
 const PostCard = ({ post }) => {
   const navigation = useNavigation();
-  const [liked, setLiked] = React.useState(post.isLikedByCurrentUser || false);
+  const dispatch = useDispatch();
+  const [liked, setLiked] = React.useState(post.likedByCurrentUser || false);
   const [likesCount, setLikesCount] = React.useState(post.likes || 0);
+  const [showOptionsMenu, setShowOptionsMenu] = React.useState(false);
+  const currentUser = useSelector((state) => state.auth.user);
+  const isOwnPost = currentUser && post.user.id === currentUser.id;
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -16,8 +21,8 @@ const PostCard = ({ post }) => {
 
   const handleLike = async () => {
     try {
-      const updatedPost = await likePost(post.id);
-      setLiked(updatedPost.isLikedByCurrentUser);
+      const updatedPost = await dispatch(toggleLikePost(post.id)).unwrap();
+      setLiked(updatedPost.likedByCurrentUser);
       setLikesCount(updatedPost.likes);
     } catch (error) {
       console.error("Error liking post:", error);
@@ -42,16 +47,69 @@ const PostCard = ({ post }) => {
     navigation.navigate("PostDetail", { postId: post.id });
   };
 
+  const handleOptionsPress = () => {
+    setShowOptionsMenu(true);
+  };
+
+  const handleEditPost = () => {
+    setShowOptionsMenu(false);
+    navigation.navigate("EditPost", { post });
+  };
+
+  const handleDeletePost = () => {
+    setShowOptionsMenu(false);
+    Alert.alert("Delete Post", "Are you sure you want to delete this post?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await dispatch(removePost(post.id)).unwrap();
+            Alert.alert("Success", "Post deleted successfully");
+          } catch (error) {
+            console.error("Error deleting post:", error);
+            Alert.alert("Error", "Failed to delete post");
+          }
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={styles.card}>
       {/* Post Header with user info */}
-      <TouchableOpacity style={styles.header} onPress={handleUserPress}>
-        <Image source={{ uri: post.user.avatarUrl || "https://via.placeholder.com/40" }} style={styles.avatar} />
-        <View style={styles.userInfo}>
-          <Text style={styles.username}>{post.user.username}</Text>
-          <Text style={styles.timestamp}>{formatDate(post.timestamp)}</Text>
-        </View>
-      </TouchableOpacity>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.headerLeft} onPress={handleUserPress}>
+          <Image source={{ uri: post.user.avatarUrl || "https://via.placeholder.com/40" }} style={styles.avatar} />
+          <View style={styles.userInfo}>
+            <Text style={styles.username}>{post.user.username}</Text>
+            <Text style={styles.timestamp}>{formatDate(post.timestamp)}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {isOwnPost && (
+          <TouchableOpacity onPress={handleOptionsPress} style={styles.optionsButton}>
+            <Icon name="ellipsis-v" size={18} color="#555" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Options Menu Modal */}
+      <Modal transparent={true} visible={showOptionsMenu} animationType="fade" onRequestClose={() => setShowOptionsMenu(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowOptionsMenu(false)}>
+          <View style={styles.optionsMenu}>
+            <TouchableOpacity style={styles.optionItem} onPress={handleEditPost}>
+              <Icon name="edit" size={18} color="#555" />
+              <Text style={styles.optionText}>Edit Post</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.optionItem} onPress={handleDeletePost}>
+              <Icon name="trash" size={18} color="#e74c3c" />
+              <Text style={[styles.optionText, { color: "#e74c3c" }]}>Delete Post</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Post Content */}
       <TouchableOpacity onPress={handlePostPress} activeOpacity={0.9}>
@@ -135,7 +193,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     padding: 12,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
   },
   avatar: {
     width: 40,
@@ -248,6 +312,38 @@ const styles = StyleSheet.create({
   },
   likedText: {
     color: "#e74c3c",
+  },
+  optionsButton: {
+    padding: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+  },
+  optionsMenu: {
+    backgroundColor: "white",
+    marginTop: 50,
+    marginRight: 10,
+    borderRadius: 8,
+    width: 150,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  optionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  optionText: {
+    fontSize: 14,
+    marginLeft: 12,
   },
 });
 

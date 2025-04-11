@@ -1,13 +1,20 @@
 import { AntDesign } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Dimensions, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { ActivityIndicator, AppState, Dimensions, ScrollView, Text, TouchableOpacity, View, Alert } from "react-native";
 import { RenderHTML } from "react-native-render-html";
 import { useDispatch, useSelector } from "react-redux";
+import { debounce } from "lodash";
 import CommentModal from "../components/CommentModal";
 import FloatingNavbar from "../components/FloatingNavbar";
-import ChapterListModal from "../components/ChapterListModal"; // Adjust path
+import ChapterListModal from "../components/ChapterListModal";
 import { updateReadingProgress } from "../redux/slices/bookSlice";
-import { getChapterById, getReadingProgress, likeChapter, getChaptersByBookId, toggleLikeChapter } from "../services/ChapterServices";
+import {
+  getChapterById,
+  getReadingProgress,
+  getChaptersByBookId,
+  toggleLikeChapter,
+  saveReadingProgress,
+} from "../services/ChapterServices";
 import { chapterdetailstyles } from "../style/chapterdetailstyles";
 
 const { width } = Dimensions.get("window");
@@ -24,6 +31,7 @@ const ChapterDetailScreen = ({ route, navigation }) => {
   const [showChapterModal, setShowChapterModal] = useState(false);
   const [contentHeight, setContentHeight] = useState(0);
   const [hasUserScrolled, setHasUserScrolled] = useState(false);
+  const [isSavingProgress, setIsSavingProgress] = useState(false);
 
   const scrollViewRef = useRef(null);
   const initialScrollDone = useRef(false);
@@ -32,42 +40,106 @@ const ChapterDetailScreen = ({ route, navigation }) => {
   const userToken = useSelector((state) => state.auth.token);
   const screenHeight = Dimensions.get("window").height;
 
+  // Verify and normalize chapterId
+  const normalizedChapterId = useCallback(() => {
+    if (!chapterId) return null;
+
+    // If chapterId is already a string or number, return it as string
+    if (typeof chapterId === "string" || typeof chapterId === "number") {
+      return chapterId.toString();
+    }
+
+    // If it's an object with an id property (sometimes happens with navigation params)
+    if (chapterId && typeof chapterId === "object" && chapterId.id) {
+      return chapterId.id.toString();
+    }
+
+    console.error("Invalid chapter ID format:", chapterId);
+    return null;
+  }, [chapterId]);
+
+  // Create a debounced save function
+  const debouncedSaveProgress = useCallback(
+    debounce((progress) => {
+      const validChapterId = normalizedChapterId();
+      if (isLoggedIn && validChapterId && progress > 0) {
+        console.log("Debounced saving progress:", Math.round(progress * 100));
+        setIsSavingProgress(true);
+
+        // Use the Redux action instead of direct API call
+        dispatch(
+          updateReadingProgress({
+            chapterId: validChapterId,
+            progress: Math.round(progress * 100),
+          })
+        )
+          .unwrap()
+          .then(() => {
+            console.log("Progress saved successfully through Redux");
+          })
+          .catch((err) => console.error("Failed to save progress:", err))
+          .finally(() => setIsSavingProgress(false));
+      }
+    }, 2000),
+    [isLoggedIn, normalizedChapterId, dispatch]
+  );
+
   // Fetch chapter and reading progress
   useEffect(() => {
     const loadChapter = async () => {
-      if (!chapterId) {
-        setError("No chapter ID provided");
+      const validChapterId = normalizedChapterId();
+      if (!validChapterId) {
+        setError("No valid chapter ID provided");
         setLoading(false);
         return;
       }
+
       setLoading(true);
       setHasUserScrolled(false); // Reset user scroll state
       initialScrollDone.current = false; // Reset scroll done flag
+
       try {
-        const chapterData = await getChapterById({ token: isLoggedIn ? userToken : null, chapterId });
+        console.log("Fetching chapter data for ID:", validChapterId);
+
+        const chapterData = await getChapterById({
+          token: isLoggedIn ? userToken : null,
+          chapterId: validChapterId,
+        });
         setChapter(chapterData);
 
-        const res = await getChaptersByBookId({ token: userToken, bookId });
-        console.log("Fetched chapters:", res);
-        setChapters(res);
+        if (bookId) {
+          const res = await getChaptersByBookId({ token: userToken, bookId });
+          console.log("Fetched chapters:", res?.length || 0);
+          setChapters(res || []);
+        }
 
         if (isLoggedIn && userToken) {
-          const progressData = await getReadingProgress({ token: userToken, chapterId });
-          if (progressData?.progress > 0) {
-            setScrollProgress(progressData.progress / 100);
-          } else {
-            setScrollProgress(0); // Explicitly reset if no progress
+          try {
+            const progressData = await getReadingProgress({ chapterId: validChapterId });
+            if (progressData?.progress > 0) {
+              setScrollProgress(progressData.progress / 100);
+            } else {
+              setScrollProgress(0); // Explicitly reset if no progress
+            }
+          } catch (progressError) {
+            console.error("Error fetching reading progress:", progressError);
+            // Don't fail the whole operation if just progress fails
           }
         }
       } catch (err) {
         console.error("Error loading chapter:", err);
-        setError("Failed to load chapter");
+        setError(`Failed to load chapter: ${err.message || "Unknown error"}`);
+        // Show error alert
+        Alert.alert("Error Loading Chapter", "There was a problem loading the chapter. Please try again.", [
+          { text: "OK", onPress: () => navigation.goBack() },
+        ]);
       } finally {
         setLoading(false);
       }
     };
+
     loadChapter();
-  }, [chapterId, isLoggedIn, userToken, bookId]);
+  }, [chapterId, isLoggedIn, userToken, bookId, normalizedChapterId, navigation]);
 
   // Auto-scroll when content height and progress are ready
   useEffect(() => {
@@ -89,6 +161,83 @@ const ChapterDetailScreen = ({ route, navigation }) => {
     }
   }, [loading, contentHeight, scrollProgress, screenHeight, hasUserScrolled]);
 
+  // Save progress when scroll position changes
+  useEffect(() => {
+    if (hasUserScrolled && scrollProgress > 0) {
+      debouncedSaveProgress(scrollProgress);
+    }
+    return () => {
+      debouncedSaveProgress.cancel();
+    };
+  }, [scrollProgress, hasUserScrolled, debouncedSaveProgress]);
+
+  // Save progress when leaving or app state changes
+  useEffect(() => {
+    const validChapterId = normalizedChapterId();
+
+    const forceSaveProgress = async () => {
+      if (isLoggedIn && validChapterId && scrollProgress > 0) {
+        console.log("Force saving progress:", Math.round(scrollProgress * 100));
+        try {
+          await dispatch(
+            updateReadingProgress({
+              chapterId: validChapterId,
+              progress: Math.round(scrollProgress * 100),
+            })
+          ).unwrap();
+          console.log("Forced progress save complete");
+        } catch (err) {
+          console.error("Error saving reading progress on exit:", err);
+        }
+      }
+    };
+
+    const unsubscribe = navigation.addListener("beforeRemove", () => {
+      forceSaveProgress();
+    });
+
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        forceSaveProgress();
+      }
+    });
+
+    return () => {
+      // Cleanup function - ensure progress is saved when component unmounts
+      forceSaveProgress();
+      unsubscribe();
+      appStateSubscription.remove();
+    };
+  }, [navigation, scrollProgress, isLoggedIn, normalizedChapterId, dispatch]);
+
+  // Create a function to save progress and navigate back
+  const handleBackPress = async () => {
+    const validChapterId = normalizedChapterId();
+    if (isLoggedIn && validChapterId && scrollProgress > 0) {
+      try {
+        console.log("Saving progress before navigating back:", Math.round(scrollProgress * 100));
+        await saveReadingProgress({
+          chapterId: validChapterId,
+          progress: Math.round(scrollProgress * 100),
+        });
+        dispatch(
+          updateReadingProgress({
+            chapterId: validChapterId,
+            progress: Math.round(scrollProgress * 100),
+          })
+        );
+      } catch (err) {
+        console.error("Error saving reading progress on back press:", err);
+      }
+    }
+    navigation.goBack();
+  };
+
+  const onContentSizeChange = (contentWidth, contentHeight) => {
+    console.log("Content size changed - Width:", contentWidth, "Height:", contentHeight);
+    setContentHeight(contentHeight);
+  };
+
   // Handle scroll and progress calculation
   const handleScroll = (event) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -99,25 +248,6 @@ const ChapterDetailScreen = ({ route, navigation }) => {
       setHasUserScrolled(true);
     }
   };
-
-  // Save progress when leaving or app state changes
-  useEffect(() => {
-    const saveOnExit = () => {
-      if (isLoggedIn && chapterId) {
-        dispatch(updateReadingProgress({ chapterId, progress: Math.round(scrollProgress * 100) }));
-      }
-    };
-
-    const unsubscribe = navigation.addListener("beforeRemove", saveOnExit);
-    const appStateSubscription = AppState.addEventListener("change", (state) => {
-      if (state === "background" || state === "inactive") saveOnExit();
-    });
-
-    return () => {
-      unsubscribe();
-      appStateSubscription.remove();
-    };
-  }, [navigation, scrollProgress, isLoggedIn, chapterId, dispatch]);
 
   // Scroll to a specific progress point
   const scrollToProgress = (progress) => {
@@ -146,14 +276,12 @@ const ChapterDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  const onContentSizeChange = (contentWidth, contentHeight) => {
-    console.log("Content size changed - Width:", contentWidth, "Height:", contentHeight);
-    setContentHeight(contentHeight);
-  };
-
   const toggleFavourite = async () => {
+    const validChapterId = normalizedChapterId();
+    if (!validChapterId) return;
+
     try {
-      const isLiked = await toggleLikeChapter(chapterId);
+      const isLiked = await toggleLikeChapter(validChapterId);
       setChapter((prev) => ({ ...prev, likedByCurrentUser: isLiked }));
     } catch (err) {
       console.error("Error liking chapter:", err);
@@ -177,13 +305,14 @@ const ChapterDetailScreen = ({ route, navigation }) => {
   return (
     <View style={chapterdetailstyles.container}>
       <View style={chapterdetailstyles.topBar}>
-        <TouchableOpacity style={chapterdetailstyles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={chapterdetailstyles.backButton} onPress={handleBackPress}>
           <AntDesign name="arrowleft" size={24} color="white" />
           <Text style={chapterdetailstyles.backText}>Back</Text>
         </TouchableOpacity>
-        <Text style={chapterdetailstyles.topBarTitle}>
+        <Text style={chapterdetailstyles.topBarTitle} numberOfLines={1} ellipsizeMode="tail">
           Chapter {chapter?.chapterNum || ""}: {chapter?.title || ""}
         </Text>
+        {isSavingProgress && <ActivityIndicator size="small" color="#ffffff" style={{ marginLeft: 5 }} />}
       </View>
 
       <ScrollView

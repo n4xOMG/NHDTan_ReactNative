@@ -9,8 +9,15 @@ const CommentsList = ({ bookId, chapterId, postId }) => {
   const dispatch = useDispatch();
   const [commentText, setCommentText] = useState("");
 
-  // Determine which type of comments we're displaying
-  const commentType = bookId ? "book" : chapterId ? "chapter" : "post";
+  // Fixed: Determine comment type more reliably
+  const determineCommentType = () => {
+    if (bookId) return "book";
+    if (chapterId) return "chapter";
+    if (postId) return "post";
+    return "book"; // Default to book if nothing is specified
+  };
+
+  const commentType = determineCommentType();
   const id = bookId || chapterId || postId;
 
   // Select the appropriate branch of the state
@@ -25,9 +32,12 @@ const CommentsList = ({ bookId, chapterId, postId }) => {
 
   // Load comments when component mounts or IDs change
   useEffect(() => {
-    dispatch(resetComments({ type: commentType }));
-    dispatch(fetchComments({ type: commentType, id, page: 0 }));
-  }, [bookId, chapterId, postId, dispatch]);
+    if (id) {
+      console.log(`Fetching ${commentType} comments for ID: ${id}`);
+      dispatch(resetComments({ type: commentType }));
+      dispatch(fetchComments({ type: commentType, id, page: 0 }));
+    }
+  }, [bookId, chapterId, postId, commentType, dispatch]);
 
   const loadMore = () => {
     if (!loading && page < totalPages) {

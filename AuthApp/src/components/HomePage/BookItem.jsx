@@ -12,7 +12,7 @@ export const BookItem = ({ book, compact = false, showStats = true, onPress }) =
       onPress(book);
     } else {
       // Default navigation to book details
-      navigation.navigate("BookDetails", { bookId: book.id });
+      navigation.navigate("BookDetail", { bookId: book.id });
     }
   };
 

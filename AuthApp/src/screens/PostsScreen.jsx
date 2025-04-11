@@ -1,18 +1,16 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, FlatList, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from "react-native";
-import { getPosts } from "../services/PostServices";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import PostCard from "../components/PostCard";
+import CreatePostCard from "../components/CreatePostCard";
 import { useNavigation } from "@react-navigation/native";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchPosts, clearPosts, setRefreshing } from "../redux/slices/postSlice";
 
 const PostsScreen = () => {
   const navigation = useNavigation();
-  const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const { posts, loading, error, page, hasMore, refreshing } = useSelector((state) => state.posts);
 
   // Use useCallback to prevent function recreation on each render
   const loadPosts = useCallback(
@@ -21,32 +19,23 @@ const PostsScreen = () => {
       if (loading || (!hasMore && !refresh)) return;
 
       try {
-        setLoading(true);
-        setError(null);
-        const newPage = refresh ? 0 : page;
-
-        const response = await getPosts({ page: newPage, size: 10 });
-
-        // Safely handle the response - check that content exists and is an array
-        const newContent = Array.isArray(response?.content) ? response.content : [];
-
         if (refresh) {
-          setPosts(newContent);
-        } else {
-          setPosts((prevPosts) => [...prevPosts, ...newContent]);
+          dispatch(clearPosts());
+          dispatch(setRefreshing(true));
         }
 
-        setPage(refresh ? 1 : newPage + 1); // Next page to fetch
-        setHasMore(response?.last === false); // Only continue if not last page
+        await dispatch(
+          fetchPosts({
+            page: refresh ? 0 : page,
+            size: 10,
+            sort: "timestamp,desc",
+          })
+        ).unwrap();
       } catch (err) {
         console.error("Error in loadPosts:", err);
-        setError("Failed to load posts. Please try again later.");
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
       }
     },
-    [loading, page, hasMore]
+    [dispatch, loading, page, hasMore]
   );
 
   // Initial load
@@ -56,8 +45,6 @@ const PostsScreen = () => {
 
   const handleRefresh = () => {
     if (refreshing) return;
-    setRefreshing(true);
-    setHasMore(true);
     loadPosts(true);
   };
 
@@ -65,6 +52,11 @@ const PostsScreen = () => {
     if (!loading && hasMore) {
       loadPosts();
     }
+  };
+
+  const handlePostCreated = () => {
+    // Refresh posts after a new post has been created
+    loadPosts(true);
   };
 
   const renderFooter = () => {
@@ -105,6 +97,7 @@ const PostsScreen = () => {
           renderItem={({ item }) => <PostCard post={item} />}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
+          ListHeaderComponent={<CreatePostCard onPostCreated={handlePostCreated} />}
           ListFooterComponent={renderFooter}
           refreshing={refreshing}
           onRefresh={handleRefresh}

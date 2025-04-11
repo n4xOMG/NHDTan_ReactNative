@@ -25,8 +25,9 @@ export const updateReadingProgress = createAsyncThunk(
   async ({ chapterId, progress }, { rejectWithValue }) => {
     try {
       console.log("Updating reading progress:", { chapterId, progress });
-      await saveReadingProgress({ chapterId, progress });
-      return { chapterId, progress };
+      // Call the API service
+      const result = await saveReadingProgress({ chapterId, progress });
+      return result; // This should include chapterId and progress
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -123,15 +124,20 @@ const bookSlice = createSlice({
       .addCase(updateReadingProgress.fulfilled, (state, action) => {
         state.loading = false;
         const { chapterId, progress } = action.payload;
+
+        // First try to find the existing progress entry
         const existingIndex = state.readingProgress.findIndex((p) => p.chapterId === chapterId);
+
+        // If found, update it
         if (existingIndex !== -1) {
-          state.readingProgress[existingIndex] = {
-            ...state.readingProgress[existingIndex],
-            progress,
-          };
+          state.readingProgress[existingIndex].progress = progress;
         } else {
+          // Otherwise add a new entry
           state.readingProgress.push({ chapterId, progress });
         }
+
+        // This will trigger the useEffect in BookDetailScreen that recalculates progress
+        console.log("Updated reading progress in state:", state.readingProgress);
       })
       .addCase(updateReadingProgress.rejected, (state, action) => {
         state.loading = false;

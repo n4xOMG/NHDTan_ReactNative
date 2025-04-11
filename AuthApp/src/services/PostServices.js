@@ -5,32 +5,19 @@ import { api, API_BASE_URL } from "../api/api";
  * @param {Object} params - Query parameters
  * @param {number} params.page - Page number (0-based)
  * @param {number} params.size - Page size
+ * @param {string} params.sort - Sort parameter (default: "timestamp,desc")
  * @returns {Promise<Object>} - Paginated posts response
  */
-export const getPosts = async ({ page = 0, size = 10 }) => {
+export const getPosts = async ({ page = 0, size = 10, sort = "timestamp,desc" }) => {
   try {
-    // Fetch posts from API
-    const response = await api.get(`${API_BASE_URL}/posts`);
+    // Fetch posts from API with pagination and sorting parameters
+    const response = await api.get(`${API_BASE_URL}/posts`, {
+      params: { page, size, sort },
+    });
 
-    // Handle the case where the API doesn't return a paginated response
-    // Create a pagination-like structure manually
-    const allPosts = response.data || [];
-
-    // Calculate paginated subset
-    const start = page * size;
-    const paginatedPosts = allPosts.slice(start, start + size);
-
-    // Determine if this is the last page
-    const isLastPage = start + size >= allPosts.length;
-
-    // Return a properly formatted pagination object
-    return {
-      content: paginatedPosts,
-      last: isLastPage,
-      totalElements: allPosts.length,
-      size: size,
-      number: page,
-    };
+    // Return the paginated response directly from the server
+    // The backend already returns a proper Page object
+    return response.data;
   } catch (error) {
     console.error("Error fetching posts:", error);
     // Return empty results on error rather than throwing
@@ -40,6 +27,7 @@ export const getPosts = async ({ page = 0, size = 10 }) => {
       totalElements: 0,
       size: size,
       number: page,
+      empty: true,
     };
   }
 };

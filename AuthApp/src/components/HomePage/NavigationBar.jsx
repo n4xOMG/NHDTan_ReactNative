@@ -15,9 +15,9 @@ export const NavigationBar = () => {
         <Text style={{ color: colors.primary, marginTop: 4, fontSize: 12 }}>Home</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={{ alignItems: "center" }} onPress={() => navigation.navigate("BookList")}>
-        <Icon name="book" size={24} color={colors.text.secondary} />
-        <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Books</Text>
+      <TouchableOpacity style={{ alignItems: "center" }} onPress={() => navigation.navigate("UserBooks")}>
+        <Icon name="library" size={24} color={colors.text.secondary} />
+        <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>My Books</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={{ alignItems: "center" }} onPress={() => navigation.navigate("Posts")}>

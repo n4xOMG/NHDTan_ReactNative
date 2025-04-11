@@ -14,7 +14,7 @@ export const getBooks = async () => {
 // Add a new function to update a book
 export const updateBook = async (book) => {
   try {
-    const response = await api.put(`${API_BASE_URL}/books/${book.id}`, book);
+    const response = await api.put(`${API_BASE_URL}/api/books/${book.id}`, book);
     return response.data;
   } catch (error) {
     console.error("Error updating book:", error);
@@ -25,7 +25,7 @@ export const updateBook = async (book) => {
 // Add a new function to create a book
 export const createBook = async (book) => {
   try {
-    const response = await api.post(`${API_BASE_URL}/books`, book);
+    const response = await api.post(`${API_BASE_URL}/api/books`, book);
     return response.data;
   } catch (error) {
     console.error("Error creating book:", error);
@@ -36,7 +36,7 @@ export const createBook = async (book) => {
 // Add a new function to delete a book
 export const deleteBook = async (bookId) => {
   try {
-    const response = await api.delete(`${API_BASE_URL}/books/${bookId}`);
+    const response = await api.delete(`${API_BASE_URL}/api/books/${bookId}`);
     return response.data;
   } catch (error) {
     console.error("Error deleting book:", error);
@@ -100,6 +100,26 @@ export const getBookCount = async () => {
     return response.data;
   } catch (error) {
     console.error("Error fetching book count:", error);
+    throw error;
+  }
+};
+
+export const getUserBooks = async (authorId) => {
+  try {
+    const response = await api.get(`${API_BASE_URL}/books/author/${authorId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching user books:", error);
+    throw error;
+  }
+};
+
+export const getBookById = async ({ bookId }) => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/books/${bookId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching book by ID:", error);
     throw error;
   }
 };

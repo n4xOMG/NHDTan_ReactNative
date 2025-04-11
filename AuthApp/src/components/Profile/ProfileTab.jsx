@@ -1,9 +1,16 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from "react-native";
 import { useSelector } from "react-redux";
+import { useNavigation } from "@react-navigation/native";
+import Icon from "react-native-vector-icons/FontAwesome";
 
 const ProfileTab = () => {
   const user = useSelector((state) => state.auth.user);
+  const navigation = useNavigation();
+
+  const handleEditProfile = () => {
+    navigation.navigate("EditProfile");
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -32,7 +39,8 @@ const ProfileTab = () => {
         </View>
       </View>
 
-      <TouchableOpacity style={styles.editButton}>
+      <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+        <Icon name="edit" size={16} color="#fff" style={styles.editIcon} />
         <Text style={styles.editButtonText}>Edit Profile</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -97,11 +105,17 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     padding: 12,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
   },
   editButtonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+    marginLeft: 8,
+  },
+  editIcon: {
+    marginRight: 4,
   },
 });
 

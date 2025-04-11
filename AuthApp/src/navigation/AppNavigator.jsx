@@ -21,6 +21,10 @@ import BookManagementScreen from "../screens/admin/BookManagementScreen";
 import ReportManagementScreen from "../screens/admin/ReportManagementScreen";
 import CreditPackageManagementScreen from "../screens/admin/CreditPackageManagementScreen";
 import LogsScreen from "../screens/admin/LogsScreen";
+import UserBooksScreen from "../screens/UserBooks/UserBooksScreen";
+import BookEditorScreen from "../screens/UserBooks/BookEditorScreen";
+import ChapterManagementScreen from "../screens/UserBooks/ChapterManagementScreen";
+import ChapterEditorScreen from "../screens/UserBooks/ChapterEditorScreen";
 
 const Stack = createStackNavigator();
 
@@ -41,6 +45,7 @@ const AppNavigator = () => {
         <Stack.Screen name="ChapterDetail" component={ChapterDetailScreen} options={{ headerShown: false }} />
         <Stack.Screen name="PaymentScreen" component={PaymentScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Posts" component={PostsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="CategoryBooks" component={CategoryBooksScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Dashboard" component={AdminDashboardScreen} options={{ headerShown: false }} />
@@ -49,6 +54,36 @@ const AppNavigator = () => {
         <Stack.Screen name="ReportManagement" component={ReportManagementScreen} options={{ headerShown: false }} />
         <Stack.Screen name="CreditPackageManagement" component={CreditPackageManagementScreen} options={{ headerShown: false }} />
         <Stack.Screen name="LogsScreen" component={LogsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="UserBooks" component={UserBooksScreen} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="BookEditor"
+          component={BookEditorScreen}
+          options={({ route }) => ({
+            title: route.params?.isEditing ? "Edit Book" : "Create Book",
+            headerStyle: {
+              backgroundColor: "#fff",
+              elevation: 0,
+              shadowOpacity: 0,
+              borderBottomWidth: 1,
+              borderBottomColor: "#eee",
+            },
+          })}
+        />
+        <Stack.Screen name="ChapterManagement" component={ChapterManagementScreen} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="ChapterEditor"
+          component={ChapterEditorScreen}
+          options={({ route }) => ({
+            title: route.params?.isEditing ? "Edit Chapter" : "Create Chapter",
+            headerStyle: {
+              backgroundColor: "#fff",
+              elevation: 0,
+              shadowOpacity: 0,
+              borderBottomWidth: 1,
+              borderBottomColor: "#eee",
+            },
+          })}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
