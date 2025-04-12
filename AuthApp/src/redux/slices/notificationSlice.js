@@ -36,7 +36,13 @@ const notificationSlice = createSlice({
   reducers: {
     // Add new notification from WebSocket
     addNotification: (state, action) => {
-      state.unreadNotifications.push(action.payload);
+      // Check if notification already exists to prevent duplicates
+      const exists = state.unreadNotifications.some((notification) => notification.id === action.payload.id);
+
+      if (!exists) {
+        console.log("Adding new notification to store:", action.payload);
+        state.unreadNotifications.unshift(action.payload); // Add to beginning of array
+      }
     },
   },
   extraReducers: (builder) => {

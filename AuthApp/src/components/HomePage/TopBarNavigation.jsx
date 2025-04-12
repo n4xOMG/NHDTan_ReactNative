@@ -8,7 +8,7 @@ import { useSelector } from "react-redux";
 const TopBarNavigation = ({ onSearch }) => {
   const [searchText, setSearchText] = useState("");
   const navigation = useNavigation();
-  const user = useSelector((state) => state.auth.user); // Assuming role is stored in auth redux state
+  const user = useSelector((state) => state.auth.user);
 
   const handleChange = (text) => {
     setSearchText(text);
@@ -34,7 +34,7 @@ const TopBarNavigation = ({ onSearch }) => {
         )}
       </View>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
-        {user?.role.name === "ADMIN" && (
+        {user?.role?.name === "ADMIN" && (
           <TouchableOpacity onPress={() => navigation.navigate("Dashboard")} style={{ padding: 8 }} accessibilityLabel="Admin Dashboard">
             <Icon name="shield-half-outline" size={26} color={colors.primary} />
           </TouchableOpacity>

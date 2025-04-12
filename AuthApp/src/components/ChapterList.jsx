@@ -70,7 +70,7 @@ const ChapterList = ({ chapters, navigation, onChapterUnlocked, bookId }) => {
         <Text style={chapteritemstyles.chapterTitle}>
           Chapter {item.chapterNum}: {item.title}
         </Text>
-        {!item.unlockedByUser && item.price > 0 && (
+        {!item.unlockedByUser && item.price > 0 && item.locked && (
           <TouchableOpacity onPress={() => handleUnlockChapter(item)}>
             <AntDesign name="lock" size={20} color="gray" />
           </TouchableOpacity>

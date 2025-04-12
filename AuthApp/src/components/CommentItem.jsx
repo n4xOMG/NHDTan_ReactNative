@@ -1,5 +1,5 @@
 import React, { memo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TextInput, TouchableOpacity, View, Alert } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { AntDesign } from "@expo/vector-icons";
 import { addReply, deleteCommentThunk, editCommentThunk, toggleLike } from "../redux/slices/commentSlice";
@@ -35,9 +35,17 @@ const CommentItem = memo(({ comment, type, id }) => {
   };
 
   const handleDelete = () => {
-    if (window.confirm("Are you sure you want to delete this comment?")) {
-      dispatch(deleteCommentThunk({ commentId: comment.id, type }));
-    }
+    Alert.alert("Confirm Delete", "Are you sure you want to delete this comment?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Delete",
+        onPress: () => dispatch(deleteCommentThunk({ commentId: comment.id, type })),
+        style: "destructive",
+      },
+    ]);
   };
 
   return (

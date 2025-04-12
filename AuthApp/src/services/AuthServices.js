@@ -49,9 +49,20 @@ export const resetPassword = async (email, password) => {
 export const getCurrentUserFromToken = async () => {
   try {
     const response = await api.get(`${API_BASE_URL}/api/user/profile`);
+    console.log("User profile retrieved:", response.data);
     return response.data;
   } catch (error) {
-    console.error("API error:", error.message);
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.error("Profile API error:", error.response.status, error.response.data);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error("Profile API error: No response received");
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      console.error("API error:", error.message);
+    }
     throw error;
   }
 };

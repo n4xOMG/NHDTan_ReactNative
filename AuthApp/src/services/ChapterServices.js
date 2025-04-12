@@ -40,6 +40,10 @@ export const getReadingProgress = async ({ chapterId }) => {
     const response = await api.get(`${API_BASE_URL}/api/reading-progress/chapters/${chapterId}`);
     return response.data;
   } catch (error) {
+    if (error.response.status === 404) {
+      console.log(`Reading progress not found for chapter ID: ${chapterId}`);
+      return { progress: 0 }; // Return a default value if not found
+    }
     console.error(`Error fetching reading progress (ID: ${chapterId}):`, error);
     // Return a default object instead of throwing to prevent crashes
     return { progress: 0 };

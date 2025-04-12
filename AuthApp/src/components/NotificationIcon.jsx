@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import { useDispatch, useSelector } from "react-redux";
@@ -15,44 +15,65 @@ const NotificationIcon = () => {
   const jwtToken = useSelector((state) => state.auth.token);
 
   const [modalVisible, setModalVisible] = useState(false);
+  const stompClientRef = useRef(null);
 
   useEffect(() => {
     // Fetch initial unread notifications
     dispatch(fetchUnreadNotifications());
 
-    // WebSocket setup
-    const socket = new SockJS(`${API_BASE_URL}/ws`);
-    const stompClient = new Client({
-      webSocketFactory: () => socket,
-      connectHeaders: {
-        Authorization: `Bearer ${jwtToken}`,
-      },
-      debug: (str) => console.log(str),
-      reconnectDelay: 5000,
-      heartbeatIncoming: 4000,
-      heartbeatOutgoing: 4000,
-    });
-
-    stompClient.onConnect = () => {
-      console.log("Connected to WebSocket");
-      stompClient.subscribe(`/user/${user.username}/notifications`, (message) => {
-        const notification = JSON.parse(message.body);
-        console.log("Notification: ", notification);
-        dispatch(addNotification(notification));
+    // Only set up WebSocket if we have a user and token
+    if (user?.username && jwtToken) {
+      // WebSocket setup
+      const socket = new SockJS(`${API_BASE_URL}/ws`);
+      const stompClient = new Client({
+        webSocketFactory: () => socket,
+        connectHeaders: {
+          Authorization: `Bearer ${jwtToken}`,
+        },
+        debug: (str) => console.log("STOMP: ", str),
+        reconnectDelay: 5000,
+        heartbeatIncoming: 4000,
+        heartbeatOutgoing: 4000,
       });
-    };
 
-    stompClient.onStompError = (error) => {
-      console.error("STOMP error:", error);
-    };
+      stompClient.onConnect = (frame) => {
+        console.log("Connected to WebSocket", frame);
+        stompClient.subscribe(`/user/${user.username}/notifications`, (message) => {
+          try {
+            const notification = JSON.parse(message.body);
+            console.log("New notification received:", notification);
+            dispatch(addNotification(notification));
+          } catch (error) {
+            console.error("Error processing notification:", error);
+            console.log("Raw message:", message.body);
+          }
+        });
+      };
 
-    stompClient.activate();
+      stompClient.onStompError = (error) => {
+        console.error("STOMP error:", error);
+      };
 
-    return () => {
-      stompClient.deactivate();
-      console.log("Disconnected from WebSocket");
-    };
+      stompClient.onWebSocketError = (error) => {
+        console.error("WebSocket error:", error);
+      };
+
+      stompClientRef.current = stompClient;
+      stompClient.activate();
+
+      return () => {
+        if (stompClientRef.current && stompClientRef.current.connected) {
+          stompClientRef.current.deactivate();
+          console.log("Disconnected from WebSocket");
+        }
+      };
+    }
   }, [dispatch, jwtToken, user?.username]);
+
+  // This useEffect will log when the unreadNotifications change
+  useEffect(() => {
+    console.log("Unread notifications updated:", unreadNotifications.length);
+  }, [unreadNotifications]);
 
   const handleNotificationClick = () => {
     setModalVisible(true);

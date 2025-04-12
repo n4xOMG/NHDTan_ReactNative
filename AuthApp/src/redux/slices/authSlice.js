@@ -86,7 +86,23 @@ export const updateEmail = createAsyncThunk("auth/updateEmail", async (email, { 
 // Initial state
 const initialState = {
   isLoggedIn: false,
-  user: null,
+  user: {
+    id: null,
+    username: null,
+    email: null,
+    fullname: null,
+    gender: null,
+    avatarUrl: null,
+    bio: null,
+    isVerified: false,
+    role: null,
+    isSuspended: false,
+    isBanned: false,
+    banReason: null,
+    credits: 0,
+    preferredCategories: [],
+    preferredTags: [],
+  },
   token: null,
   loading: false,
   error: null,
@@ -179,7 +195,11 @@ const authSlice = createSlice({
       })
       .addCase(getProfileFromToken.fulfilled, (state, action) => {
         state.loading = false;
-        state.user = action.payload;
+        state.user = {
+          ...state.user,
+          ...action.payload,
+          // Store birthdate as string instead of converting to Date object
+        };
       })
       .addCase(getProfileFromToken.rejected, (state, action) => {
         state.loading = false;
