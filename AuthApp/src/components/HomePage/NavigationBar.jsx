@@ -25,6 +25,11 @@ export const NavigationBar = () => {
         <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Posts</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={{ alignItems: "center" }} onPress={() => navigation.navigate("PaymentScreen")}>
+        <Icon name="wallet" size={24} color={colors.text.secondary} />
+        <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Credits</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={{ alignItems: "center" }} onPress={() => {}}>
         <NotificationIcon />
         <Text style={{ color: colors.text.secondary, marginTop: 4, fontSize: 12 }}>Noti</Text>
