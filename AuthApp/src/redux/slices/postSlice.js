@@ -67,6 +67,24 @@ export const toggleLikePost = createAsyncThunk("posts/likePost", async (postId, 
   }
 });
 
+export const shareChapter = createAsyncThunk("posts/shareChapter", async ({ chapterId, postData }, { rejectWithValue }) => {
+  try {
+    const response = await PostServices.shareChapterAsPost(chapterId, postData);
+    return response;
+  } catch (error) {
+    return rejectWithValue(error.message);
+  }
+});
+
+export const shareBook = createAsyncThunk("posts/shareBook", async ({ bookId, postData }, { rejectWithValue }) => {
+  try {
+    const response = await PostServices.shareBookAsPost(bookId, postData);
+    return response;
+  } catch (error) {
+    return rejectWithValue(error.message);
+  }
+});
+
 const initialState = {
   posts: [],
   userPosts: {},
@@ -185,6 +203,34 @@ const postSlice = createSlice({
         if (state.currentPost && state.currentPost.id === updatedPost.id) {
           state.currentPost = updatedPost;
         }
+      })
+
+      // Share chapter cases
+      .addCase(shareChapter.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(shareChapter.fulfilled, (state, action) => {
+        state.posts = [action.payload, ...state.posts];
+        state.loading = false;
+      })
+      .addCase(shareChapter.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+
+      // Share book cases
+      .addCase(shareBook.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(shareBook.fulfilled, (state, action) => {
+        state.posts = [action.payload, ...state.posts];
+        state.loading = false;
+      })
+      .addCase(shareBook.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       });
   },
 });

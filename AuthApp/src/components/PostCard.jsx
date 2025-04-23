@@ -1,177 +1,196 @@
 import React from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity, Alert, Modal } from "react-native";
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import Icon from "react-native-vector-icons/FontAwesome";
-import { useDispatch, useSelector } from "react-redux";
-import { toggleLikePost, removePost, updateExistingPost } from "../redux/slices/postSlice";
+import { AntDesign, MaterialIcons } from "@expo/vector-icons";
+import { useDispatch } from "react-redux";
+import { toggleLikePost } from "../redux/slices/postSlice";
+
+const { width } = Dimensions.get("window");
+
+const formatTimeAgo = (timestamp) => {
+  if (!timestamp) return "Unknown time";
+
+  const now = new Date();
+  const postDate = new Date(timestamp);
+  const secondsAgo = Math.floor((now - postDate) / 1000);
+
+  if (isNaN(secondsAgo)) return "Invalid date";
+
+  if (secondsAgo < 60) {
+    return `${secondsAgo} seconds ago`;
+  } else if (secondsAgo < 3600) {
+    const minutes = Math.floor(secondsAgo / 60);
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+  } else if (secondsAgo < 86400) {
+    const hours = Math.floor(secondsAgo / 3600);
+    return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  } else if (secondsAgo < 604800) {
+    const days = Math.floor(secondsAgo / 86400);
+    return `${days} ${days === 1 ? "day" : "days"} ago`;
+  } else {
+    return postDate.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
+};
 
 const PostCard = ({ post }) => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
-  const [liked, setLiked] = React.useState(post.likedByCurrentUser || false);
-  const [likesCount, setLikesCount] = React.useState(post.likes || 0);
-  const [showOptionsMenu, setShowOptionsMenu] = React.useState(false);
-  const currentUser = useSelector((state) => state.auth.user);
-  const isOwnPost = currentUser && post.user.id === currentUser.id;
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
+  const handleLike = () => {
+    dispatch(toggleLikePost(post.id));
   };
 
-  const handleLike = async () => {
-    try {
-      const updatedPost = await dispatch(toggleLikePost(post.id)).unwrap();
-      setLiked(updatedPost.likedByCurrentUser);
-      setLikesCount(updatedPost.likes);
-    } catch (error) {
-      console.error("Error liking post:", error);
-      Alert.alert("Error", "Failed to like post");
-    }
-  };
-
-  const handleCommentPress = () => {
-    navigation.navigate("PostDetail", { postId: post.id });
-  };
-
-  const handleSharePress = () => {
-    // Navigate to share screen or open share dialog
-    Alert.alert("Share", "Share functionality coming soon!");
-  };
-
-  const handleUserPress = () => {
+  const navigateToProfile = () => {
     navigation.navigate("UserProfile", { userId: post.user.id });
   };
 
-  const handlePostPress = () => {
+  const navigateToDetail = () => {
     navigation.navigate("PostDetail", { postId: post.id });
   };
 
-  const handleOptionsPress = () => {
-    setShowOptionsMenu(true);
+  const navigateToBookDetail = () => {
+    if (post.postType === "BOOK_SHARE" && post.sharedBook?.id) {
+      navigation.navigate("BookDetail", { bookId: post.sharedBook.id });
+    }
   };
 
-  const handleEditPost = () => {
-    setShowOptionsMenu(false);
-    navigation.navigate("EditPost", { post });
+  const renderSharedBook = () => {
+    if (post.postType !== "BOOK_SHARE" || !post.sharedBook) return null;
+
+    return (
+      <TouchableOpacity style={styles.sharedItemContainer} onPress={navigateToBookDetail} activeOpacity={0.8}>
+        <View style={styles.sharedItemHeader}>
+          <MaterialIcons name="menu-book" size={16} color="#3498db" />
+          <Text style={styles.sharedItemType}>Book</Text>
+        </View>
+
+        <View style={styles.sharedBookContent}>
+          <Image source={{ uri: post.sharedBook.bookCover }} style={styles.sharedBookCover} resizeMode="cover" />
+          <View style={styles.sharedBookInfo}>
+            <Text style={styles.sharedBookTitle} numberOfLines={2}>
+              {post.sharedBook.title}
+            </Text>
+            <Text style={styles.sharedBookAuthor} numberOfLines={1}>
+              by {post.sharedBook.authorName || "Unknown author"}
+            </Text>
+            {post.sharedBook.categoryName && <Text style={styles.sharedBookCategory}>{post.sharedBook.categoryName}</Text>}
+            <Text style={styles.viewBookText}>
+              View Book <AntDesign name="arrowright" size={12} />
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
-  const handleDeletePost = () => {
-    setShowOptionsMenu(false);
-    Alert.alert("Delete Post", "Are you sure you want to delete this post?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await dispatch(removePost(post.id)).unwrap();
-            Alert.alert("Success", "Post deleted successfully");
-          } catch (error) {
-            console.error("Error deleting post:", error);
-            Alert.alert("Error", "Failed to delete post");
-          }
-        },
-      },
-    ]);
+  const renderSharedChapter = () => {
+    if (post.postType !== "CHAPTER_SHARE" || !post.sharedChapter) {
+      console.log("Not rendering shared chapter: conditions not met");
+      console.log("Post type:", post.postType);
+      console.log("Shared chapter exists:", !!post.sharedChapter);
+      return null;
+    }
+
+    console.log("Rendering shared chapter component for chapter:", post.sharedChapter);
+
+    // Let's try a direct navigation approach for testing
+    const handleChapterPress = () => {
+      console.log("Chapter pressed - direct handler");
+
+      if (post.sharedChapter?.id) {
+        const chapterId = post.sharedChapter.id;
+        const bookId = post.sharedChapter.bookId;
+
+        console.log(`Attempting to navigate to ChapterDetail with chapterId=${chapterId}, bookId=${bookId}`);
+
+        // Try direct navigation with delay to ensure logs are visible
+        setTimeout(() => {
+          navigation.navigate("ChapterDetail", {
+            chapterId: chapterId,
+            bookId: bookId,
+          });
+        }, 200);
+      } else {
+        console.log("Cannot navigate - missing chapter data", post.sharedChapter);
+      }
+    };
+
+    return (
+      <TouchableOpacity
+        style={[styles.sharedItemContainer, { borderColor: "blue" }]} // Make it visually distinct for debugging
+        onPress={handleChapterPress}
+        activeOpacity={0.5} // Make the press more visible
+      >
+        <View style={styles.sharedItemHeader}>
+          <MaterialIcons name="bookmark" size={16} color="#3498db" />
+          <Text style={styles.sharedItemType}>Chapter</Text>
+        </View>
+
+        <View style={styles.sharedChapterContent}>
+          {post.sharedChapter.bookCover && (
+            <Image source={{ uri: post.sharedChapter.bookCover }} style={styles.sharedBookCover} resizeMode="cover" />
+          )}
+          <View style={styles.sharedBookInfo}>
+            <Text style={styles.sharedChapterNumber}>Chapter {post.sharedChapter.chapterNum}</Text>
+            <Text style={styles.sharedChapterTitle} numberOfLines={2}>
+              {post.sharedChapter.title}
+            </Text>
+            {post.sharedChapter.bookTitle && (
+              <Text style={styles.sharedBookTitle} numberOfLines={1}>
+                from "{post.sharedChapter.bookTitle}"
+              </Text>
+            )}
+            <Text style={styles.viewChapterText}>
+              Read Chapter <AntDesign name="arrowright" size={12} />
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
     <View style={styles.card}>
-      {/* Post Header with user info */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerLeft} onPress={handleUserPress}>
-          <Image source={{ uri: post.user.avatarUrl || "https://via.placeholder.com/40" }} style={styles.avatar} />
-          <View style={styles.userInfo}>
-            <Text style={styles.username}>{post.user.username}</Text>
-            <Text style={styles.timestamp}>{formatDate(post.timestamp)}</Text>
-          </View>
+        <TouchableOpacity onPress={navigateToProfile}>
+          <Image source={{ uri: post.user.avatar || "https://via.placeholder.com/150" }} style={styles.avatar} />
         </TouchableOpacity>
-
-        {isOwnPost && (
-          <TouchableOpacity onPress={handleOptionsPress} style={styles.optionsButton}>
-            <Icon name="ellipsis-v" size={18} color="#555" />
+        <View style={styles.headerInfo}>
+          <TouchableOpacity onPress={navigateToProfile}>
+            <Text style={styles.username}>{post.user.name}</Text>
           </TouchableOpacity>
-        )}
+          <Text style={styles.timestamp}>{formatTimeAgo(post.timestamp)}</Text>
+        </View>
       </View>
 
-      {/* Options Menu Modal */}
-      <Modal transparent={true} visible={showOptionsMenu} animationType="fade" onRequestClose={() => setShowOptionsMenu(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowOptionsMenu(false)}>
-          <View style={styles.optionsMenu}>
-            <TouchableOpacity style={styles.optionItem} onPress={handleEditPost}>
-              <Icon name="edit" size={18} color="#555" />
-              <Text style={styles.optionText}>Edit Post</Text>
+      {post.content && <Text style={styles.content}>{post.content}</Text>}
+
+      {renderSharedBook()}
+      {renderSharedChapter()}
+
+      {post.images && post.images.length > 0 && (
+        <View style={styles.imageContainer}>
+          {post.images.map((image, index) => (
+            <TouchableOpacity key={index} onPress={navigateToDetail} style={styles.imageWrapper}>
+              <Image source={{ uri: image }} style={styles.postImage} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.optionItem} onPress={handleDeletePost}>
-              <Icon name="trash" size={18} color="#e74c3c" />
-              <Text style={[styles.optionText, { color: "#e74c3c" }]}>Delete Post</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+          ))}
+        </View>
+      )}
 
-      {/* Post Content */}
-      <TouchableOpacity onPress={handlePostPress} activeOpacity={0.9}>
-        <Text style={styles.content}>{post.content}</Text>
-
-        {/* Post Images (if any) */}
-        {post.images && post.images.length > 0 && (
-          <View style={styles.imageContainer}>
-            {post.images.length === 1 ? (
-              <Image source={{ uri: post.images[0] }} style={styles.singleImage} />
-            ) : (
-              <View style={styles.imageGrid}>
-                {post.images.slice(0, 4).map((img, index) => (
-                  <Image key={index} source={{ uri: img }} style={styles.gridImage} />
-                ))}
-                {post.images.length > 4 && (
-                  <View style={styles.moreImagesOverlay}>
-                    <Text style={styles.moreImagesText}>+{post.images.length - 4}</Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Shared Post (if any) */}
-        {post.sharedPostId && (
-          <View style={styles.sharedPost}>
-            <View style={styles.sharedHeader}>
-              <Text style={styles.sharedUsername}>{post.sharedPostUser.username}</Text>
-            </View>
-            <Text style={styles.sharedContent}>{post.sharedPostContent}</Text>
-            {post.sharePostImages && post.sharePostImages.length > 0 && (
-              <Image source={{ uri: post.sharePostImages[0] }} style={styles.sharedImage} />
-            )}
-          </View>
-        )}
-      </TouchableOpacity>
-
-      {/* Post Stats */}
-      <View style={styles.stats}>
-        <Text style={styles.statsText}>
-          {likesCount} {likesCount === 1 ? "like" : "likes"} • {post.comments?.length || 0}{" "}
-          {post.comments?.length === 1 ? "comment" : "comments"}
-        </Text>
-      </View>
-
-      {/* Action Buttons */}
-      <View style={styles.actions}>
-        <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
-          <Icon name={liked ? "heart" : "heart-o"} size={20} color={liked ? "#e74c3c" : "#555"} />
-          <Text style={[styles.actionText, liked && styles.likedText]}>Like</Text>
+      <View style={styles.footer}>
+        <TouchableOpacity onPress={handleLike} style={styles.likeButton}>
+          <AntDesign name={post.likedByCurrentUser ? "heart" : "hearto"} size={20} color={post.likedByCurrentUser ? "#e74c3c" : "#777"} />
+          <Text style={[styles.likeCount, post.likedByCurrentUser && styles.likedText]}>{post.likes || 0}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton} onPress={handleCommentPress}>
-          <Icon name="comment-o" size={20} color="#555" />
-          <Text style={styles.actionText}>Comment</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton} onPress={handleSharePress}>
-          <Icon name="share" size={20} color="#555" />
-          <Text style={styles.actionText}>Share</Text>
+        <TouchableOpacity onPress={navigateToDetail} style={styles.commentButton}>
+          <AntDesign name="message1" size={18} color="#777" />
+          <Text style={styles.commentCount}>{post.comments?.length || 0}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -181,25 +200,19 @@ const PostCard = ({ post }) => {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "white",
-    borderRadius: 10,
-    marginBottom: 10,
-    overflow: "hidden",
-    elevation: 2,
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 3,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    padding: 12,
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
+    marginBottom: 12,
   },
   avatar: {
     width: 40,
@@ -207,143 +220,144 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginRight: 10,
   },
-  userInfo: {
+  headerInfo: {
     flex: 1,
   },
   username: {
     fontWeight: "bold",
     fontSize: 15,
+    color: "#333",
   },
   timestamp: {
-    color: "#666",
     fontSize: 12,
+    color: "#777",
+    marginTop: 2,
   },
   content: {
-    paddingHorizontal: 12,
-    paddingBottom: 12,
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 20,
+    color: "#333",
+    marginBottom: 12,
   },
   imageContainer: {
-    width: "100%",
-  },
-  singleImage: {
-    width: "100%",
-    height: 300,
-    resizeMode: "cover",
-  },
-  imageGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    height: 200,
+    marginBottom: 10,
   },
-  gridImage: {
-    width: "50%",
-    height: "50%",
-    resizeMode: "cover",
-  },
-  moreImagesOverlay: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: "50%",
-    height: "50%",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  moreImagesText: {
-    color: "white",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  sharedPost: {
-    margin: 12,
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-  },
-  sharedHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  sharedUsername: {
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  sharedContent: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  sharedImage: {
+  imageWrapper: {
     width: "100%",
-    height: 150,
+    marginBottom: 8,
+  },
+  postImage: {
+    width: "100%",
+    height: 200,
     borderRadius: 8,
-    resizeMode: "cover",
+    backgroundColor: "#f0f0f0",
   },
-  stats: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: "#f0f0f0",
-  },
-  statsText: {
-    color: "#666",
-    fontSize: 13,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    padding: 8,
-  },
-  actionButton: {
+  footer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
   },
-  actionText: {
+  likeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 20,
+  },
+  likeCount: {
     marginLeft: 6,
     fontSize: 14,
-    color: "#555",
+    color: "#777",
   },
   likedText: {
     color: "#e74c3c",
   },
-  optionsButton: {
-    padding: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    justifyContent: "flex-start",
-    alignItems: "flex-end",
-  },
-  optionsMenu: {
-    backgroundColor: "white",
-    marginTop: 50,
-    marginRight: 10,
-    borderRadius: 8,
-    width: 150,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-  },
-  optionItem: {
+  commentButton: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
   },
-  optionText: {
+  commentCount: {
+    marginLeft: 6,
     fontSize: 14,
+    color: "#777",
+  },
+  sharedItemContainer: {
+    backgroundColor: "#f7f9fc",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e6ecf5",
+  },
+  sharedItemHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  sharedItemType: {
+    marginLeft: 5,
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#3498db",
+  },
+  sharedBookContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sharedChapterContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sharedBookCover: {
+    width: 70,
+    height: 100,
+    borderRadius: 6,
+    backgroundColor: "#eee",
+  },
+  sharedBookInfo: {
+    flex: 1,
     marginLeft: 12,
+  },
+  sharedBookTitle: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 4,
+  },
+  sharedBookAuthor: {
+    fontSize: 13,
+    color: "#666",
+    marginBottom: 4,
+  },
+  sharedBookCategory: {
+    fontSize: 12,
+    color: "#777",
+    marginBottom: 8,
+  },
+  sharedChapterNumber: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#3498db",
+    marginBottom: 2,
+  },
+  sharedChapterTitle: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 6,
+  },
+  viewBookText: {
+    fontSize: 13,
+    color: "#3498db",
+    fontWeight: "500",
+  },
+  viewChapterText: {
+    fontSize: 13,
+    color: "#3498db",
+    fontWeight: "500",
   },
 });
 

@@ -11,12 +11,14 @@ import UserManagementScreen from "../screens/admin/UserManagementScreen";
 import BookDetail from "../screens/BookDetailScreen";
 import CategoryBooksScreen from "../screens/CategoryBooksScreen";
 import ChapterDetailScreen from "../screens/ChapterDetailScreen";
+import CollabEditor from "../screens/CollabEditor";
 import EditProfileScreen from "../screens/EditProfileScreen";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import HomeScreen from "../screens/HomeScreen";
 import LoginScreen from "../screens/LoginScreen";
 import OtpVerificationScreen from "../screens/OtpVerificationScreen";
 import PaymentScreen from "../screens/PaymentScreen";
+import PostDetailScreen from "../screens/PostDetailScreen";
 import PostsScreen from "../screens/PostsScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import RegisterScreen from "../screens/RegisterScreen";
@@ -47,6 +49,7 @@ const AppNavigator = () => {
         <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Posts" component={PostsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ headerShown: false }} />
         <Stack.Screen name="CategoryBooks" component={CategoryBooksScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Dashboard" component={AdminDashboardScreen} options={{ headerShown: false }} />
         <Stack.Screen name="UserManagement" component={UserManagementScreen} options={{ headerShown: false }} />
@@ -84,6 +87,7 @@ const AppNavigator = () => {
             },
           })}
         />
+        <Stack.Screen name="CollabEditor" component={CollabEditor} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

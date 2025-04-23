@@ -142,3 +142,39 @@ export const deleteChapter = async ({ bookId, chapterId }) => {
     throw error;
   }
 };
+
+// Get or create room ID for collaborative editing
+export const getChapterRoomId = async ({ chapterId, bookId }) => {
+  try {
+    // If editing an existing chapter
+    if (chapterId) {
+      const response = await api.get(`${API_BASE_URL}/api/chapters/${chapterId}/room`);
+      return response.data;
+    }
+    // If creating a new chapter, generate a room ID linked to the book
+    else if (bookId) {
+      const response = await api.post(`${API_BASE_URL}/api/books/${bookId}/chapters/room`);
+      return response.data;
+    } else {
+      throw new Error("Either chapterId or bookId is required");
+    }
+  } catch (error) {
+    console.error("Error getting/creating room ID:", error);
+    throw error;
+  }
+};
+
+// Save chapter content from collaborative editor
+export const saveChapterContent = async ({ roomId, content }) => {
+  try {
+    if (!roomId) {
+      throw new Error("Room ID is required");
+    }
+
+    const response = await api.put(`${API_BASE_URL}/api/chapters/room/${roomId}/content`, { content });
+    return response.data;
+  } catch (error) {
+    console.error("Error saving chapter content:", error);
+    throw error;
+  }
+};

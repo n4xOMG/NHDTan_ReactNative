@@ -124,3 +124,35 @@ export const likePost = async (postId) => {
     throw error;
   }
 };
+
+/**
+ * Share a chapter as a post
+ * @param {number} chapterId - Chapter ID to share
+ * @param {Object} postData - Additional post data (content, images)
+ * @returns {Promise<Object>} - Created post
+ */
+export const shareChapterAsPost = async (chapterId, postData) => {
+  try {
+    const response = await api.post(`${API_BASE_URL}/posts/share-chapter/${chapterId}`, postData);
+    return response.data;
+  } catch (error) {
+    console.error(`Error sharing chapter ${chapterId} as post:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Share a book as a post
+ * @param {number} bookId - Book ID to share
+ * @param {Object} postData - Additional post data (content, images)
+ * @returns {Promise<Object>} - Created post
+ */
+export const shareBookAsPost = async (bookId, postData) => {
+  try {
+    const response = await api.post(`${API_BASE_URL}/posts/share-book/${bookId}`, postData);
+    return response.data;
+  } catch (error) {
+    console.error(`Error sharing book ${bookId} as post:`, error);
+    throw error;
+  }
+};

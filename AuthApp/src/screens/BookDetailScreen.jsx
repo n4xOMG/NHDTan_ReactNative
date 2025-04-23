@@ -12,17 +12,36 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
+  Modal,
+  TextInput,
+  Alert,
 } from "react-native";
-import ProgressBar from "react-native-progress/Bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDispatch, useSelector } from "react-redux";
 import { useFocusEffect } from "@react-navigation/native";
 import ChapterList from "../components/ChapterList";
 import CommentsList from "../components/CommentList";
 import { fetchReadingProgressByBookId } from "../redux/slices/bookSlice";
+import { shareBook } from "../redux/slices/postSlice";
 import { getBookById, getUserFavStatus, toggleUserFavStatus } from "../services/BookServices";
 import { getChaptersByBookId } from "../services/ChapterServices";
 import { bookdetailstyles } from "../style/bookdetailstyles";
+
+// Custom ProgressBar Component
+const ProgressBar = ({ progress, color, style, height, borderRadius, unfilledColor }) => {
+  return (
+    <View style={[{ height: height || 10, borderRadius: borderRadius || 4, backgroundColor: unfilledColor || "#e0e0e0" }, style]}>
+      <View
+        style={{
+          width: `${progress * 100}%`,
+          height: "100%",
+          backgroundColor: color || "#3498db",
+          borderRadius: borderRadius || 4,
+        }}
+      />
+    </View>
+  );
+};
 
 export default function BookDetail({ route, navigation }) {
   const { bookId } = route.params;
@@ -38,6 +57,11 @@ export default function BookDetail({ route, navigation }) {
     error: null,
   });
   const [overallProgress, setOverallProgress] = useState(0);
+
+  // New state for sharing functionality
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareComment, setShareComment] = useState("");
+  const [isSharing, setIsSharing] = useState(false);
 
   const { width } = useWindowDimensions();
   const dispatch = useDispatch();
@@ -188,6 +212,33 @@ export default function BookDetail({ route, navigation }) {
     }));
   }, []);
 
+  // Function to share book as post
+  const handleShareBook = async () => {
+    if (!bookId) return;
+
+    setIsSharing(true);
+    try {
+      await dispatch(
+        shareBook({
+          bookId,
+          postData: {
+            content: shareComment,
+            postType: "BOOK_SHARE",
+          },
+        })
+      ).unwrap();
+
+      setShowShareModal(false);
+      setShareComment("");
+      Alert.alert("Success", "Book shared successfully!");
+    } catch (err) {
+      console.error("Error sharing book:", err);
+      Alert.alert("Error", "Failed to share book. Please try again.");
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   const renderHeader = () => (
     <>
       {/* Status bar with proper color */}
@@ -245,10 +296,16 @@ export default function BookDetail({ route, navigation }) {
                 )}
               </View>
 
-              {/* Favorite button */}
-              <TouchableOpacity style={bookdetailstyles.favoriteButton} onPress={handleFavorite} activeOpacity={0.7}>
-                <AntDesign name={bookData.isFav ? "heart" : "hearto"} size={24} color={bookData.isFav ? "#e74c3c" : "#999"} />
-              </TouchableOpacity>
+              {/* Action buttons - Added share button here */}
+              <View style={bookdetailstyles.actionButtonsContainer}>
+                <TouchableOpacity style={bookdetailstyles.favoriteButton} onPress={handleFavorite} activeOpacity={0.7}>
+                  <AntDesign name={bookData.isFav ? "heart" : "hearto"} size={24} color={bookData.isFav ? "#e74c3c" : "#999"} />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={bookdetailstyles.shareButton} onPress={() => setShowShareModal(true)} activeOpacity={0.7}>
+                  <AntDesign name="sharealt" size={24} color="#3498db" />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
@@ -313,7 +370,194 @@ export default function BookDetail({ route, navigation }) {
             <RefreshControl refreshing={uiState.refreshing} onRefresh={handleRefresh} colors={["#3498db"]} tintColor="#3498db" />
           }
         />
+
+        {/* Share Book Modal */}
+        <Modal visible={showShareModal} transparent={true} animationType="slide" onRequestClose={() => setShowShareModal(false)}>
+          <View style={bookdetailstyles.modalContainer}>
+            <View style={bookdetailstyles.shareModalContent}>
+              <View style={bookdetailstyles.shareModalHeader}>
+                <Text style={bookdetailstyles.shareModalTitle}>Share Book</Text>
+                <TouchableOpacity onPress={() => setShowShareModal(false)}>
+                  <AntDesign name="close" size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={bookdetailstyles.shareBookInfoContainer}>
+                <Image source={{ uri: bookData.book?.bookCover }} style={bookdetailstyles.shareBookCover} resizeMode="cover" />
+                <View style={bookdetailstyles.shareBookDetails}>
+                  <Text style={bookdetailstyles.shareBookTitle} numberOfLines={2}>
+                    {bookData.book?.title}
+                  </Text>
+                  <Text style={bookdetailstyles.shareBookAuthor} numberOfLines={1}>
+                    by {bookData.book?.authorName || bookData.book?.author?.name}
+                  </Text>
+                </View>
+              </View>
+
+              <TextInput
+                style={bookdetailstyles.shareInput}
+                placeholder="Add a comment about this book..."
+                value={shareComment}
+                onChangeText={setShareComment}
+                multiline
+                maxLength={500}
+              />
+
+              <View style={bookdetailstyles.shareActionButtons}>
+                <TouchableOpacity
+                  style={[bookdetailstyles.shareActionButton, isSharing && bookdetailstyles.disabledButton]}
+                  onPress={handleShareBook}
+                  disabled={isSharing}
+                >
+                  {isSharing ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <>
+                      <AntDesign name="sharealt" size={18} color="#fff" />
+                      <Text style={bookdetailstyles.shareButtonText}>Share</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity style={bookdetailstyles.cancelButton} onPress={() => setShowShareModal(false)} disabled={isSharing}>
+                  <Text style={bookdetailstyles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+// Add these styles to the existing bookdetailstyles
+bookdetailstyles.actionButtonsContainer = {
+  flexDirection: "row",
+  justifyContent: "flex-start",
+  marginTop: 10,
+};
+
+bookdetailstyles.favoriteButton = {
+  padding: 8,
+  borderRadius: 20,
+  marginRight: 15,
+};
+
+bookdetailstyles.shareButton = {
+  padding: 8,
+  borderRadius: 20,
+};
+
+bookdetailstyles.modalContainer = {
+  flex: 1,
+  justifyContent: "flex-end",
+  backgroundColor: "rgba(0, 0, 0, 0.5)",
+};
+
+bookdetailstyles.shareModalContent = {
+  backgroundColor: "white",
+  borderTopLeftRadius: 20,
+  borderTopRightRadius: 20,
+  padding: 20,
+  minHeight: 350,
+};
+
+bookdetailstyles.shareModalHeader = {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 15,
+};
+
+bookdetailstyles.shareModalTitle = {
+  fontSize: 18,
+  fontWeight: "bold",
+  color: "#333",
+};
+
+bookdetailstyles.shareBookInfoContainer = {
+  flexDirection: "row",
+  backgroundColor: "#f5f5f5",
+  borderRadius: 10,
+  padding: 12,
+  marginBottom: 15,
+};
+
+bookdetailstyles.shareBookCover = {
+  width: 60,
+  height: 90,
+  borderRadius: 6,
+};
+
+bookdetailstyles.shareBookDetails = {
+  flex: 1,
+  marginLeft: 12,
+  justifyContent: "center",
+};
+
+bookdetailstyles.shareBookTitle = {
+  fontSize: 16,
+  fontWeight: "bold",
+  color: "#333",
+  marginBottom: 4,
+};
+
+bookdetailstyles.shareBookAuthor = {
+  fontSize: 14,
+  color: "#666",
+};
+
+bookdetailstyles.shareInput = {
+  borderWidth: 1,
+  borderColor: "#ddd",
+  borderRadius: 10,
+  padding: 15,
+  minHeight: 120,
+  textAlignVertical: "top",
+  fontSize: 16,
+  backgroundColor: "#f9f9f9",
+};
+
+bookdetailstyles.shareActionButtons = {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  marginTop: 20,
+};
+
+bookdetailstyles.shareActionButton = {
+  backgroundColor: "#3498db",
+  padding: 12,
+  borderRadius: 10,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  flex: 1,
+  marginRight: 10,
+};
+
+bookdetailstyles.disabledButton = {
+  opacity: 0.7,
+};
+
+bookdetailstyles.shareButtonText = {
+  color: "white",
+  fontWeight: "bold",
+  marginLeft: 8,
+  fontSize: 16,
+};
+
+bookdetailstyles.cancelButton = {
+  padding: 12,
+  borderRadius: 10,
+  flex: 0.7,
+  borderWidth: 1,
+  borderColor: "#ddd",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+bookdetailstyles.cancelButtonText = {
+  color: "#555",
+  fontSize: 16,
+};

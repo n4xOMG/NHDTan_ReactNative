@@ -11,6 +11,7 @@ import {
   Switch,
   KeyboardAvoidingView,
   Platform,
+  Share,
 } from "react-native";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -36,6 +37,8 @@ const ChapterEditorScreen = () => {
   const [locked, setLocked] = useState(false);
   const [draft, setDraft] = useState(isDraft || false);
   const [localError, setLocalError] = useState(null);
+  const [roomId, setRoomId] = useState("");
+  const [contentPreviewText, setContentPreviewText] = useState("");
 
   useEffect(() => {
     if (!bookId) {
@@ -47,15 +50,23 @@ const ChapterEditorScreen = () => {
       setTitle(currentChapter.title || "");
       setChapterNum(currentChapter.chapterNum?.toString() || "");
       setContent(currentChapter.content || "");
+      setContentPreviewText(stripHtml(currentChapter.content || ""));
       setPrice(currentChapter.price?.toString() || "0");
       setLocked(currentChapter.isLocked || false);
       setDraft(currentChapter.draft || false);
+      setRoomId(currentChapter.roomId || "");
     }
 
     return () => {
       dispatch(clearCurrentChapter());
     };
   }, [currentChapter, isEditing, bookId]);
+
+  // Helper function to strip HTML for preview
+  const stripHtml = (html) => {
+    if (!html) return "";
+    return html.replace(/<[^>]*>?/gm, "").substring(0, 200);
+  };
 
   const validateForm = () => {
     if (!title.trim()) {
@@ -73,6 +84,37 @@ const ChapterEditorScreen = () => {
     return true;
   };
 
+  const handleEditContent = () => {
+    navigation.navigate("CollabEditor", {
+      bookId,
+      chapterId,
+      initialContent: content,
+      roomId,
+      onContentChange: (newContent, newRoomId) => {
+        setContent(newContent);
+        setContentPreviewText(stripHtml(newContent));
+        if (newRoomId) setRoomId(newRoomId);
+      },
+    });
+  };
+
+  const handleShareCollabLink = async () => {
+    if (!roomId) {
+      Alert.alert("Info", "Room ID will be generated when you save the chapter or edit content.");
+      return;
+    }
+
+    try {
+      const collabUrl = `https://yourbookapp.com/collab/${roomId}`;
+      await Share.share({
+        message: `Join me to edit this chapter: ${collabUrl}`,
+        url: collabUrl,
+      });
+    } catch (error) {
+      Alert.alert("Error", "Failed to share collaboration link");
+    }
+  };
+
   const handleSave = async () => {
     if (!bookId) {
       Alert.alert("Error", "Book ID is missing. Cannot save chapter.");
@@ -88,6 +130,7 @@ const ChapterEditorScreen = () => {
       price: parseInt(price, 10) || 0,
       isLocked: locked,
       draft,
+      roomId,
     };
 
     try {
@@ -173,16 +216,32 @@ const ChapterEditorScreen = () => {
         )}
 
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Content {!draft && "*"}</Text>
-          <TextInput
-            style={[styles.input, styles.contentInput]}
-            value={content}
-            onChangeText={setContent}
-            placeholder="Enter chapter content (supports HTML formatting)"
-            multiline
-            textAlignVertical="top"
-          />
-          <Text style={styles.helperText}>You can use HTML formatting in your content.</Text>
+          <View style={styles.contentHeaderContainer}>
+            <Text style={styles.label}>Content {!draft && "*"}</Text>
+            <View style={styles.actionsContainer}>
+              {roomId && (
+                <TouchableOpacity style={styles.collabButton} onPress={handleShareCollabLink}>
+                  <Icon name="share-social-outline" size={20} color={colors.primary} />
+                  <Text style={styles.collabButtonText}>Share</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.editContentButton} onPress={handleEditContent}>
+                <Icon name="create-outline" size={20} color="#fff" />
+                <Text style={styles.editContentButtonText}>Edit Content</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.contentPreview}>
+            {contentPreviewText ? (
+              <Text numberOfLines={5} ellipsizeMode="tail">
+                {contentPreviewText}
+              </Text>
+            ) : (
+              <Text style={styles.placeholderText}>No content yet. Tap "Edit Content" to create content.</Text>
+            )}
+          </View>
+          <Text style={styles.helperText}>Edit content in the collaborative editor. {roomId ? "Room ID: " + roomId : ""}</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -296,6 +355,63 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontWeight: "bold",
+  },
+  contentHeaderContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  actionsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  editContentButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  editContentButtonText: {
+    color: "#fff",
+    marginLeft: 4,
+    fontWeight: "500",
+  },
+
+  collabButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 8,
+  },
+
+  collabButtonText: {
+    color: colors.primary,
+    marginLeft: 4,
+    fontWeight: "500",
+  },
+
+  contentPreview: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 100,
+  },
+
+  placeholderText: {
+    color: colors.text.secondary,
+    fontStyle: "italic",
   },
 });
 
