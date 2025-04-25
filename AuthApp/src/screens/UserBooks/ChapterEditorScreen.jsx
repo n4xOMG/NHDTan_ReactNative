@@ -85,16 +85,27 @@ const ChapterEditorScreen = () => {
   };
 
   const handleEditContent = () => {
-    navigation.navigate("CollabEditor", {
+    // Store current state in Redux before navigating
+    dispatch({
+      type: "chapter/saveTemporaryState",
+      payload: {
+        title,
+        chapterNum,
+        content,
+        price,
+        locked,
+        draft,
+        roomId,
+      },
+    });
+
+    navigation.navigate("CollaborativeEditor", {
       bookId,
       chapterId,
       initialContent: content,
       roomId,
-      onContentChange: (newContent, newRoomId) => {
-        setContent(newContent);
-        setContentPreviewText(stripHtml(newContent));
-        if (newRoomId) setRoomId(newRoomId);
-      },
+      // Remove the function from navigation params
+      returnRoute: route.name, // Pass the route name instead of a function
     });
   };
 

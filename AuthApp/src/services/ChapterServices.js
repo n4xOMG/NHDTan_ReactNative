@@ -1,11 +1,30 @@
 import axios from "axios";
 import { api, API_BASE_URL } from "../api/api";
 
+// Add this utility function to help the web-based editor access the token
+export const tokenHelper = {
+  // This function can be used by the web application code to extract token from localStorage
+  getJwtFromStorage: () => {
+    return localStorage.getItem("jwtToken");
+  },
+
+  // Method to create axios instance with auth headers from localStorage
+  getAuthenticatedClient: () => {
+    const token = localStorage.getItem("jwtToken");
+    return axios.create({
+      baseURL: API_BASE_URL,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+    });
+  },
+};
+
 export const getChaptersByBookId = async ({ token, bookId }) => {
   try {
     const apiClient = token ? api : axios;
     const response = await apiClient.get(`${API_BASE_URL}/books/${bookId}/chapters`);
-    console.log("Response from getChaptersByBookId:", response.data);
     return response.data;
   } catch (error) {
     console.error("Error during fetching chapters:", error);
@@ -18,8 +37,6 @@ export const getChapterById = async ({ token, chapterId }) => {
     if (!chapterId) {
       throw new Error("Chapter ID is required");
     }
-
-    console.log("Fetching chapter with ID:", chapterId);
     const apiClient = token ? api : axios;
     const response = await apiClient.get(`${API_BASE_URL}/chapters/${chapterId}`);
     return response.data;
@@ -34,9 +51,6 @@ export const getReadingProgress = async ({ chapterId }) => {
     if (!chapterId) {
       throw new Error("Chapter ID is required");
     }
-
-    console.log("Fetching reading progress for chapter ID:", chapterId);
-    // Make sure the API endpoint matches exactly what the backend expects
     const response = await api.get(`${API_BASE_URL}/api/reading-progress/chapters/${chapterId}`);
     return response.data;
   } catch (error) {
@@ -56,11 +70,9 @@ export const saveReadingProgress = async ({ chapterId, progress }) => {
       throw new Error("Chapter ID is required");
     }
 
-    console.log("Saving reading progress:", { chapterId, progress });
     const response = await api.post(`${API_BASE_URL}/api/chapters/${chapterId}/progress`, {
       progress,
     });
-    console.log("Response from saveReadingProgress:", response.data);
     return { chapterId, progress }; // Ensure we return both the ID and progress value
   } catch (error) {
     console.error(`Error saving reading progress (ID: ${chapterId}):`, error);
@@ -146,6 +158,7 @@ export const deleteChapter = async ({ bookId, chapterId }) => {
 // Get or create room ID for collaborative editing
 export const getChapterRoomId = async ({ chapterId, bookId }) => {
   try {
+    console.log("Getting or creating room ID for chapter:", { chapterId, bookId });
     // If editing an existing chapter
     if (chapterId) {
       const response = await api.get(`${API_BASE_URL}/api/chapters/${chapterId}/room`);
@@ -170,7 +183,6 @@ export const saveChapterContent = async ({ roomId, content }) => {
     if (!roomId) {
       throw new Error("Room ID is required");
     }
-
     const response = await api.put(`${API_BASE_URL}/api/chapters/room/${roomId}/content`, { content });
     return response.data;
   } catch (error) {

@@ -11,7 +11,6 @@ import UserManagementScreen from "../screens/admin/UserManagementScreen";
 import BookDetail from "../screens/BookDetailScreen";
 import CategoryBooksScreen from "../screens/CategoryBooksScreen";
 import ChapterDetailScreen from "../screens/ChapterDetailScreen";
-import CollabEditor from "../screens/CollabEditor";
 import EditProfileScreen from "../screens/EditProfileScreen";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import HomeScreen from "../screens/HomeScreen";
@@ -27,7 +26,7 @@ import BookEditorScreen from "../screens/UserBooks/BookEditorScreen";
 import ChapterEditorScreen from "../screens/UserBooks/ChapterEditorScreen";
 import ChapterManagementScreen from "../screens/UserBooks/ChapterManagementScreen";
 import UserBooksScreen from "../screens/UserBooks/UserBooksScreen";
-
+import CollaborativeEditorScreen from "../screens/UserBooks/CollaborativeEditorScreen";
 const Stack = createStackNavigator();
 
 const AppNavigator = () => {
@@ -87,7 +86,7 @@ const AppNavigator = () => {
             },
           })}
         />
-        <Stack.Screen name="CollabEditor" component={CollabEditor} options={{ headerShown: false }} />
+        <Stack.Screen name="CollaborativeEditor" component={CollaborativeEditorScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
