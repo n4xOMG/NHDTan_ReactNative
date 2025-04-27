@@ -237,3 +237,48 @@ export const getCurrentUserLogs = async (page = 0, size = 20) => {
     };
   }
 };
+
+/**
+ * Get user profile by ID
+ * @param {number} userId - The ID of the user to fetch
+ * @returns {Promise<Object>} User profile data
+ */
+export const getUserProfileById = async (userId) => {
+  try {
+    const response = await api.get(`${API_BASE_URL}/user/profile/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching user profile for ID ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Follow a user
+ * @param {number} userId - The ID of the user to follow
+ * @returns {Promise<Object>} Updated user relationship status
+ */
+export const followUser = async (userId) => {
+  try {
+    const response = await api.post(`${API_BASE_URL}/user/follow/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error following user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Unfollow a user
+ * @param {number} userId - The ID of the user to unfollow
+ * @returns {Promise<Object>} Updated user relationship status
+ */
+export const unfollowUser = async (userId) => {
+  try {
+    const response = await api.post(`${API_BASE_URL}/user/unfollow/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error unfollowing user ${userId}:`, error);
+    throw error;
+  }
+};

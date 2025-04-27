@@ -27,6 +27,10 @@ import ChapterEditorScreen from "../screens/UserBooks/ChapterEditorScreen";
 import ChapterManagementScreen from "../screens/UserBooks/ChapterManagementScreen";
 import UserBooksScreen from "../screens/UserBooks/UserBooksScreen";
 import CollaborativeEditorScreen from "../screens/UserBooks/CollaborativeEditorScreen";
+import UserProfileScreen from "../screens/UserProfileScreen";
+import ImageGalleryScreen from "../screens/ImageGalleryScreen";
+import ChatScreen from "../screens/ChatScreen";
+
 const Stack = createStackNavigator();
 
 const AppNavigator = () => {
@@ -87,6 +91,27 @@ const AppNavigator = () => {
           })}
         />
         <Stack.Screen name="CollaborativeEditor" component={CollaborativeEditorScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: "Profile" }} />
+        <Stack.Screen
+          name="ImageGallery"
+          component={ImageGalleryScreen}
+          options={{
+            headerShown: false,
+            presentation: "modal",
+            gestureEnabled: true,
+            animationEnabled: true,
+          }}
+        />
+        <Stack.Screen
+          name="ChatScreen"
+          component={ChatScreen}
+          options={{
+            headerShown: false,
+            presentation: "modal",
+            gestureEnabled: true,
+            animationEnabled: true,
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
