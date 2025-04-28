@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,333 +12,253 @@ import {
   SafeAreaView,
   StatusBar,
   ScrollView,
+  Image,
+  RefreshControl,
   Dimensions,
-} from 'react-native';
-import { Ionicons, MaterialIcons, FontAwesome5, AntDesign } from '@expo/vector-icons';
+} from "react-native";
+import { Ionicons, MaterialIcons, FontAwesome5, AntDesign, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSelector } from "react-redux";
+import { getAllReports, resolveReport, deleteReport } from "../../services/ReportServices";
 
-// Mock data - replace with actual API calls
-const MOCK_REPORTS = [
-  {
-    id: '1',
-    title: 'Monthly Revenue',
-    type: 'financial',
-    period: 'Jun 2023',
-    status: 'approved',
-    data: {
-      total: 12580.50,
-      change: 15.3, // percentage compared to previous period
-      breakdown: [
-        { category: 'Basic Package', value: 2150.25 },
-        { category: 'Premium Package', value: 6740.80 },
-        { category: 'Gold Package', value: 3689.45 },
-      ]
-    },
-    generatedDate: '2023-07-01',
-    approvedBy: 'admin',
-  },
-  {
-    id: '2',
-    title: 'New Users',
-    type: 'users',
-    period: 'Jun 2023',
-    status: 'pending',
-    data: {
-      total: 245,
-      change: 8.2,
-      breakdown: [
-        { category: 'Mobile App', value: 175 },
-        { category: 'Website', value: 70 },
-      ]
-    },
-    generatedDate: '2023-07-01',
-    approvedBy: null,
-  },
-  {
-    id: '3',
-    title: 'Book Popularity',
-    type: 'content',
-    period: 'Q2 2023',
-    status: 'approved',
-    data: {
-      total: 5678,
-      change: 22.7,
-      breakdown: [
-        { category: 'Fiction', value: 2345 },
-        { category: 'Non-Fiction', value: 1236 },
-        { category: 'Educational', value: 1105 },
-        { category: 'Others', value: 992 },
-      ]
-    },
-    generatedDate: '2023-07-03',
-    approvedBy: 'admin',
-  },
-  {
-    id: '4',
-    title: 'User Engagement',
-    type: 'analytics',
-    period: 'Jun 2023',
-    status: 'rejected',
-    data: {
-      total: 45280,
-      change: -2.3,
-      breakdown: [
-        { category: 'Reading Time', value: 32450 },
-        { category: 'Searches', value: 8760 },
-        { category: 'Ratings & Reviews', value: 4070 },
-      ]
-    },
-    generatedDate: '2023-07-02',
-    approvedBy: null,
-  },
-  {
-    id: '5',
-    title: 'Quarterly Summary',
-    type: 'summary',
-    period: 'Q2 2023',
-    status: 'approved',
-    data: {
-      total: null,
-      change: null,
-      breakdown: []
-    },
-    generatedDate: '2023-07-05',
-    approvedBy: 'admin',
-  },
-];
+const { width } = Dimensions.get("window");
 
-const { width } = Dimensions.get('window');
-
-const ReportManagementScreen = () => {
-  const [reports, setReports] = useState(MOCK_REPORTS);
-  const [filteredReports, setFilteredReports] = useState(MOCK_REPORTS);
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+const ReportManagementScreen = ({ navigation }) => {
+  const [reports, setReports] = useState([]);
+  const [filteredReports, setFilteredReports] = useState([]);
+  const [loading, setLoading] = useState(false); // Initialize as false
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [currentReport, setCurrentReport] = useState(null);
-  const [filterType, setFilterType] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [sortOrder, setSortOrder] = useState('desc'); // newest first
-  const [generateModalVisible, setGenerateModalVisible] = useState(false);
+  const [filterType, setFilterType] = useState("all");
+  const [filterResolved, setFilterResolved] = useState("all");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
-  // For the generate modal
-  const [reportTitle, setReportTitle] = useState('');
-  const [reportType, setReportType] = useState('financial');
-  const [reportPeriod, setReportPeriod] = useState('');
+  const user = useSelector((state) => state.auth.user);
+  const isAdmin = user?.role?.name === "ADMIN";
 
-  // Report types for filters and generation
   const reportTypes = [
-    { id: 'financial', label: 'Financial', icon: 'dollar-sign' },
-    { id: 'users', label: 'Users', icon: 'users' },
-    { id: 'content', label: 'Content', icon: 'book' },
-    { id: 'analytics', label: 'Analytics', icon: 'chart-bar' },
-    { id: 'summary', label: 'Summary', icon: 'clipboard-list' },
+    { id: "all", label: "All Types", icon: "flag" },
+    { id: "book", label: "Books", icon: "book" },
+    { id: "chapter", label: "Chapters", icon: "bookmark" },
+    { id: "comment", label: "Comments", icon: "message" },
+    { id: "user", label: "Users", icon: "user" },
   ];
 
+  // Fetch reports from API
+  const fetchReports = useCallback(
+    async (refresh = false) => {
+      if (loading && !refresh) return;
+      if (!hasMore && !refresh) return;
+
+      try {
+        setLoading(true);
+
+        if (refresh) {
+          setPage(0);
+          setHasMore(true);
+        }
+
+        const pageToFetch = refresh ? 0 : page;
+
+        // Update filter parameters to match backend expectations
+        let typeFilter = filterType !== "all" ? filterType : null;
+        // Convert string-based filter to boolean for the backend
+        let resolvedFilter = filterResolved !== "all" ? filterResolved === "resolved" : null;
+
+        console.log(`Fetching reports: page=${pageToFetch}, type=${typeFilter}, resolved=${resolvedFilter}`);
+
+        const response = await getAllReports({
+          page: pageToFetch,
+          size: 20,
+          sort: `reportedDate,${sortOrder}`,
+          resolved: resolvedFilter,
+          type: typeFilter,
+        });
+
+        // Ensure we handle the response format correctly (either content array or direct array)
+        const newReports = response.content || response || [];
+
+        setReports((prev) => (refresh ? newReports : [...prev, ...newReports]));
+        setHasMore(!response.last);
+
+        if (!response.last && !refresh) {
+          setPage((prevPage) => prevPage + 1);
+        }
+      } catch (error) {
+        console.error("Error fetching reports:", error);
+        Alert.alert("Error", "Failed to load reports. Please try again.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [page, hasMore, filterType, filterResolved, sortOrder] // Removed loading, initialLoadDone
+  );
+
+  // Initial data loading
   useEffect(() => {
-    // Apply filters and search
-    let result = [...reports];
-    
-    // Filter by type
-    if (filterType !== 'all') {
-      result = result.filter(report => report.type === filterType);
+    fetchReports(true); // Fetch immediately on mount
+  }, [fetchReports]);
+
+  // Handle filter changes
+  useEffect(() => {
+    setReports([]);
+    setPage(0);
+    setHasMore(true);
+    fetchReports(true);
+  }, [filterType, filterResolved, sortOrder, fetchReports]);
+
+  // Apply search filter
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredReports(reports);
+      return;
     }
-    
-    // Filter by status
-    if (filterStatus !== 'all') {
-      result = result.filter(report => report.status === filterStatus);
-    }
-    
-    // Search query
-    if (searchQuery) {
-      result = result.filter(
-        report =>
-          report.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          report.period.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-    
-    // Apply sort by date
-    result.sort((a, b) => {
-      const dateA = new Date(a.generatedDate);
-      const dateB = new Date(b.generatedDate);
-      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+
+    const lowercaseQuery = searchQuery.toLowerCase();
+    const filtered = reports.filter((report) => {
+      if (report.reason && report.reason.toLowerCase().includes(lowercaseQuery)) return true;
+      if (report.reporter?.username?.toLowerCase().includes(lowercaseQuery)) return true;
+      if (report.book?.title?.toLowerCase().includes(lowercaseQuery)) return true;
+      if (report.chapter?.title?.toLowerCase().includes(lowercaseQuery)) return true;
+      if (report.comment?.content?.toLowerCase().includes(lowercaseQuery)) return true;
+      return false;
     });
-    
-    setFilteredReports(result);
-  }, [searchQuery, reports, filterType, filterStatus, sortOrder]);
+
+    setFilteredReports(filtered);
+  }, [reports, searchQuery]);
 
   const handleViewReport = (report) => {
     setCurrentReport(report);
     setDetailModalVisible(true);
   };
 
-  const handleGenerateReport = () => {
-    setGenerateModalVisible(true);
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchReports(true);
   };
 
-  const handleCreateReport = () => {
-    if (!reportTitle || !reportPeriod) {
-      Alert.alert('Error', 'Title and period are required');
-      return;
+  const handleLoadMore = () => {
+    if (!loading && hasMore) {
+      fetchReports(false);
     }
+  };
 
-    // In a real app, this would be an API call to generate a report
-    // Here we just mock the creation
-    const newReport = {
-      id: Date.now().toString(),
-      title: reportTitle,
-      type: reportType,
-      period: reportPeriod,
-      status: 'pending',
-      data: {
-        total: 0,
-        change: 0,
-        breakdown: [],
-      },
-      generatedDate: new Date().toISOString().split('T')[0],
-      approvedBy: null,
-    };
+  const handleResolveReport = async (id, isResolved) => {
+    try {
+      setLoading(true);
+      await resolveReport(id, isResolved);
 
-    setReports([newReport, ...reports]);
-    setGenerateModalVisible(false);
-    
-    // Reset form
-    setReportTitle('');
-    setReportType('financial');
-    setReportPeriod('');
+      const updatedReports = reports.map((report) => (report.id === id ? { ...report, resolved: isResolved } : report));
+      setReports(updatedReports);
 
-    Alert.alert('Success', 'Report generation initiated. It will be available soon.');
+      if (currentReport && currentReport.id === id) {
+        setCurrentReport({ ...currentReport, resolved: isResolved });
+      }
+
+      Alert.alert("Success", `Report has been marked as ${isResolved ? "resolved" : "unresolved"}`);
+    } catch (error) {
+      console.error(`Error ${isResolved ? "resolving" : "unresolving"} report:`, error);
+      Alert.alert("Error", `Failed to update report status. Please try again.`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteReport = (id) => {
-    Alert.alert(
-      'Confirm Deletion',
-      'Are you sure you want to delete this report?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          onPress: () => {
-            setReports(reports.filter(report => report.id !== id));
-            if (detailModalVisible && currentReport && currentReport.id === id) {
+    Alert.alert("Confirm Deletion", "Are you sure you want to delete this report? This action cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        onPress: async () => {
+          try {
+            setLoading(true);
+            await deleteReport(id);
+            setReports(reports.filter((report) => report.id !== id));
+
+            if (detailModalVisible && currentReport?.id === id) {
               setDetailModalVisible(false);
             }
-          },
-          style: 'destructive',
+
+            Alert.alert("Success", "Report has been deleted");
+          } catch (error) {
+            console.error("Error deleting report:", error);
+            Alert.alert("Error", "Failed to delete report. Please try again.");
+          } finally {
+            setLoading(false);
+          }
         },
-      ]
-    );
+        style: "destructive",
+      },
+    ]);
   };
 
-  const handleApproveReport = (id) => {
-    const updatedReports = reports.map(report => 
-      report.id === id 
-        ? { 
-            ...report, 
-            status: 'approved', 
-            approvedBy: 'admin' // In real app, use logged in admin ID
-          } 
-        : report
-    );
-    setReports(updatedReports);
-    
-    if (currentReport && currentReport.id === id) {
-      setCurrentReport({ ...currentReport, status: 'approved', approvedBy: 'admin' });
-    }
-    
-    Alert.alert('Success', 'Report has been approved');
+  const getReportTypeIcon = (report) => {
+    if (report.book) return "book";
+    if (report.chapter) return "bookmark";
+    if (report.comment) return "message";
+    if (report.user) return "user";
+    return "flag";
   };
 
-  const handleRejectReport = (id) => {
-    const updatedReports = reports.map(report => 
-      report.id === id 
-        ? { 
-            ...report, 
-            status: 'rejected', 
-          } 
-        : report
-    );
-    setReports(updatedReports);
-    
-    if (currentReport && currentReport.id === id) {
-      setCurrentReport({ ...currentReport, status: 'rejected' });
-    }
-    
-    Alert.alert('Success', 'Report has been rejected');
+  const getReportTypeLabel = (report) => {
+    if (report.book) return "Book";
+    if (report.chapter) return "Chapter";
+    if (report.comment) return "Comment";
+    if (report.user) return "User";
+    return "Unknown";
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'approved': return '#00cc66';
-      case 'pending': return '#ffc107';
-      case 'rejected': return '#f44336';
-      default: return '#666';
-    }
-  };
-
-  const getTypeIcon = (type) => {
-    const reportType = reportTypes.find(t => t.id === type);
-    return reportType ? reportType.icon : 'file-alt';
+  const getReportTitle = (report) => {
+    if (report.book) return report.book.title || "Untitled Book";
+    if (report.chapter) return report.chapter.title || "Untitled Chapter";
+    if (report.comment) return "Comment Report";
+    if (report.user) return report.user.username || "User Report";
+    return "Report #" + report.id;
   };
 
   const formatDate = (dateString) => {
-    const options = { year: 'numeric', month: 'short', day: 'numeric' };
+    if (!dateString) return "Unknown date";
+    const options = { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" };
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
-  const formatCurrency = (value) => {
-    return `$${value.toFixed(2)}`;
-  };
-
-  const formatNumber = (value, suffix = '') => {
-    return `${value.toLocaleString()}${suffix}`;
-  };
-
   const renderItem = ({ item }) => (
-    <TouchableOpacity style={styles.reportItem} onPress={() => handleViewReport(item)}>
-      <View style={styles.reportIconContainer}>
-        <FontAwesome5 
-          name={getTypeIcon(item.type)} 
-          size={24} 
-          color="#4a80f5" 
-          style={styles.reportIcon} 
-        />
+    <TouchableOpacity style={[styles.reportItem, item.resolved && styles.resolvedReportItem]} onPress={() => handleViewReport(item)}>
+      <View style={[styles.reportIconContainer, { backgroundColor: item.resolved ? "#e9f7ef" : "#fff3e0" }]}>
+        <FontAwesome5 name={getReportTypeIcon(item)} size={22} color={item.resolved ? "#27ae60" : "#f39c12"} />
       </View>
-      
+
       <View style={styles.reportInfo}>
-        <Text style={styles.reportTitle}>{item.title}</Text>
-        <Text style={styles.reportPeriod}>{item.period}</Text>
-        
-        <View style={styles.reportMeta}>
-          <Text style={styles.generatedDate}>
-            Generated: {formatDate(item.generatedDate)}
+        <View style={styles.reportHeader}>
+          <Text style={styles.reportTitle} numberOfLines={1}>
+            {getReportTitle(item)}
           </Text>
-          
-          <View style={[
-            styles.statusBadge, 
-            { backgroundColor: `${getStatusColor(item.status)}20` }
-          ]}>
-            <View style={[
-              styles.statusDot,
-              { backgroundColor: getStatusColor(item.status) }
-            ]} />
-            <Text style={[
-              styles.statusText,
-              { color: getStatusColor(item.status) }
-            ]}>
-              {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+          <View style={[styles.statusBadge, { backgroundColor: item.resolved ? "#e9f7ef" : "#fff3e0" }]}>
+            <Text style={[styles.statusText, { color: item.resolved ? "#27ae60" : "#f39c12" }]}>
+              {item.resolved ? "Resolved" : "Pending"}
             </Text>
           </View>
         </View>
+
+        <Text style={styles.reportType}>
+          <FontAwesome5 name={getReportTypeIcon(item)} size={12} color="#666" /> {getReportTypeLabel(item)}
+        </Text>
+
+        <Text style={styles.reportReason} numberOfLines={2}>
+          {item.reason || "No reason provided"}
+        </Text>
+
+        <View style={styles.reportMeta}>
+          <Text style={styles.reporterName}>By: {item.reporter?.username || "Anonymous"}</Text>
+          <Text style={styles.reportDate}>{formatDate(item.reportedDate)}</Text>
+        </View>
       </View>
-      
-      <TouchableOpacity 
-        style={styles.moreButton}
-        onPress={() => handleViewReport(item)}
-      >
+
+      <TouchableOpacity style={styles.moreButton} onPress={() => handleViewReport(item)}>
         <Ionicons name="chevron-forward" size={24} color="#888" />
       </TouchableOpacity>
     </TouchableOpacity>
@@ -346,83 +266,41 @@ const ReportManagementScreen = () => {
 
   const renderFilters = () => (
     <View style={styles.filtersContainer}>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterScrollContent}
-      >
-        <TouchableOpacity 
-          style={[styles.filterButton, filterType === 'all' && styles.activeFilterButton]} 
-          onPress={() => setFilterType('all')}
-        >
-          <FontAwesome5 
-            name="layer-group" 
-            size={14} 
-            color={filterType === 'all' ? "#fff" : "#666"} 
-            style={styles.filterIcon}
-          />
-          <Text style={[styles.filterButtonText, filterType === 'all' && styles.activeFilterText]}>
-            All Types
-          </Text>
-        </TouchableOpacity>
-        
-        {reportTypes.map(type => (
-          <TouchableOpacity 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollContent}>
+        {reportTypes.map((type) => (
+          <TouchableOpacity
             key={type.id}
-            style={[styles.filterButton, filterType === type.id && styles.activeFilterButton]} 
+            style={[styles.filterButton, filterType === type.id && styles.activeFilterButton]}
             onPress={() => setFilterType(type.id)}
           >
-            <FontAwesome5 
-              name={type.icon} 
-              size={14} 
-              color={filterType === type.id ? "#fff" : "#666"} 
-              style={styles.filterIcon}
-            />
-            <Text style={[styles.filterButtonText, filterType === type.id && styles.activeFilterText]}>
-              {type.label}
-            </Text>
+            <FontAwesome5 name={type.icon} size={14} color={filterType === type.id ? "#fff" : "#666"} style={styles.filterIcon} />
+            <Text style={[styles.filterButtonText, filterType === type.id && styles.activeFilterText]}>{type.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
-      
+
       <View style={styles.statusFilterContainer}>
-        <TouchableOpacity 
-          style={[styles.statusFilterButton, filterStatus === 'all' && styles.activeStatusFilter]} 
-          onPress={() => setFilterStatus('all')}
+        <TouchableOpacity
+          style={[styles.statusFilterButton, filterResolved === "all" && styles.activeStatusFilter]}
+          onPress={() => setFilterResolved("all")}
         >
-          <Text style={[styles.statusFilterText, filterStatus === 'all' && styles.activeStatusFilterText]}>
-            All
-          </Text>
+          <Text style={[styles.statusFilterText, filterResolved === "all" && styles.activeStatusFilterText]}>All Status</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.statusFilterButton, filterStatus === 'pending' && styles.activeStatusFilter]} 
-          onPress={() => setFilterStatus('pending')}
+
+        <TouchableOpacity
+          style={[styles.statusFilterButton, filterResolved === "pending" && styles.activeStatusFilter]}
+          onPress={() => setFilterResolved("pending")}
         >
-          <View style={[styles.miniStatusDot, { backgroundColor: '#ffc107' }]} />
-          <Text style={[styles.statusFilterText, filterStatus === 'pending' && styles.activeStatusFilterText]}>
-            Pending
-          </Text>
+          <View style={[styles.miniStatusDot, { backgroundColor: "#f39c12" }]} />
+          <Text style={[styles.statusFilterText, filterResolved === "pending" && styles.activeStatusFilterText]}>Pending</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.statusFilterButton, filterStatus === 'approved' && styles.activeStatusFilter]} 
-          onPress={() => setFilterStatus('approved')}
+
+        <TouchableOpacity
+          style={[styles.statusFilterButton, filterResolved === "resolved" && styles.activeStatusFilter]}
+          onPress={() => setFilterResolved("resolved")}
         >
-          <View style={[styles.miniStatusDot, { backgroundColor: '#00cc66' }]} />
-          <Text style={[styles.statusFilterText, filterStatus === 'approved' && styles.activeStatusFilterText]}>
-            Approved
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.statusFilterButton, filterStatus === 'rejected' && styles.activeStatusFilter]} 
-          onPress={() => setFilterStatus('rejected')}
-        >
-          <View style={[styles.miniStatusDot, { backgroundColor: '#f44336' }]} />
-          <Text style={[styles.statusFilterText, filterStatus === 'rejected' && styles.activeStatusFilterText]}>
-            Rejected
-          </Text>
+          <View style={[styles.miniStatusDot, { backgroundColor: "#27ae60" }]} />
+          <Text style={[styles.statusFilterText, filterResolved === "resolved" && styles.activeStatusFilterText]}>Resolved</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -430,332 +308,288 @@ const ReportManagementScreen = () => {
 
   const renderDetailModal = () => {
     if (!currentReport) return null;
-    
+
     return (
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={detailModalVisible}
-        onRequestClose={() => setDetailModalVisible(false)}
-      >
+      <Modal animationType="slide" transparent={true} visible={detailModalVisible} onRequestClose={() => setDetailModalVisible(false)}>
         <View style={styles.modalContainer}>
           <View style={styles.detailModalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity 
-                style={styles.closeButton}
-                onPress={() => setDetailModalVisible(false)}
-              >
+              <TouchableOpacity style={styles.closeButton} onPress={() => setDetailModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
-              
+
               <Text style={styles.modalTitle}>Report Details</Text>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={styles.deleteButton}
                 onPress={() => {
                   setDetailModalVisible(false);
                   handleDeleteReport(currentReport.id);
                 }}
               >
-                <Ionicons name="trash-outline" size={24} color="#f44336" />
+                <Ionicons name="trash-outline" size={24} color="#e74c3c" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.detailScroll}>
-              <View style={styles.reportHeader}>
-                <View style={styles.reportTypeIndicator}>
-                  <FontAwesome5 
-                    name={getTypeIcon(currentReport.type)} 
-                    size={24} 
-                    color="#fff" 
-                  />
-                </View>
-                
-                <View style={styles.reportHeaderInfo}>
-                  <Text style={styles.detailTitle}>{currentReport.title}</Text>
-                  <Text style={styles.detailPeriod}>{currentReport.period}</Text>
-                </View>
+              <View style={[styles.reportStatusBanner, { backgroundColor: currentReport.resolved ? "#e9f7ef" : "#fff3e0" }]}>
+                <FontAwesome5
+                  name={currentReport.resolved ? "check-circle" : "exclamation-circle"}
+                  size={20}
+                  color={currentReport.resolved ? "#27ae60" : "#f39c12"}
+                />
+                <Text style={[styles.reportStatusText, { color: currentReport.resolved ? "#27ae60" : "#f39c12" }]}>
+                  {currentReport.resolved ? "Resolved" : "Pending Resolution"}
+                </Text>
               </View>
-              
-              <View style={styles.reportMeta}>
-                <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Generated:</Text>
-                  <Text style={styles.metaValue}>{formatDate(currentReport.generatedDate)}</Text>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>Report Information</Text>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>ID:</Text>
+                  <Text style={styles.detailValue}>#{currentReport.id}</Text>
                 </View>
-                
-                <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Status:</Text>
-                  <View style={[
-                    styles.statusBadge, 
-                    { backgroundColor: `${getStatusColor(currentReport.status)}20` }
-                  ]}>
-                    <View style={[
-                      styles.statusDot,
-                      { backgroundColor: getStatusColor(currentReport.status) }
-                    ]} />
-                    <Text style={[
-                      styles.statusText,
-                      { color: getStatusColor(currentReport.status) }
-                    ]}>
-                      {currentReport.status.charAt(0).toUpperCase() + currentReport.status.slice(1)}
-                    </Text>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Reported:</Text>
+                  <Text style={styles.detailValue}>{formatDate(currentReport.reportedDate)}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Reporter:</Text>
+                  <Text style={styles.detailValue}>{currentReport.reporter?.username || "Anonymous"}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Type:</Text>
+                  <View style={styles.typeContainer}>
+                    <FontAwesome5 name={getReportTypeIcon(currentReport)} size={14} color="#666" />
+                    <Text style={styles.typeText}>{getReportTypeLabel(currentReport)}</Text>
                   </View>
                 </View>
-                
-                {currentReport.approvedBy && (
-                  <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Approved By:</Text>
-                    <Text style={styles.metaValue}>{currentReport.approvedBy}</Text>
+              </View>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>Reason for Report</Text>
+                <View style={styles.reasonContainer}>
+                  <Text style={styles.reasonText}>{currentReport.reason || "No reason provided by the reporter."}</Text>
+                </View>
+              </View>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>Reported Content</Text>
+
+                {currentReport.book && (
+                  <View style={styles.reportedContentCard}>
+                    <View style={styles.reportedContentHeader}>
+                      <FontAwesome5 name="book" size={16} color="#4a80f5" />
+                      <Text style={styles.reportedContentType}>Book</Text>
+                    </View>
+
+                    <View style={styles.bookContainer}>
+                      {currentReport.book.bookCover && (
+                        <Image source={{ uri: currentReport.book.bookCover }} style={styles.bookCover} resizeMode="cover" />
+                      )}
+                      <View style={styles.bookInfo}>
+                        <Text style={styles.bookTitle}>{currentReport.book.title || "Untitled Book"}</Text>
+                        <Text style={styles.bookAuthor}>
+                          by {currentReport.book.authorName || currentReport.book.author?.name || "Unknown Author"}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.viewButton}
+                          onPress={() => {
+                            setDetailModalVisible(false);
+                            navigation.navigate("BookDetail", { bookId: currentReport.book.id });
+                          }}
+                        >
+                          <Text style={styles.viewButtonText}>View Book</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   </View>
                 )}
-              </View>
-              
-              {currentReport.data && currentReport.data.total !== null && (
-                <View style={styles.reportCard}>
-                  <Text style={styles.cardTitle}>Overview</Text>
-                  
-                  <View style={styles.totalContainer}>
-                    <Text style={styles.totalValue}>
-                      {currentReport.type === 'financial' 
-                        ? formatCurrency(currentReport.data.total)
-                        : formatNumber(currentReport.data.total)}
-                    </Text>
-                    
-                    {currentReport.data.change !== null && (
-                      <View style={[
-                        styles.changeBadge,
-                        {
-                          backgroundColor: currentReport.data.change >= 0
-                            ? '#e6f7ee'
-                            : '#ffe6e6'
-                        }
-                      ]}>
-                        <AntDesign 
-                          name={currentReport.data.change >= 0 ? 'arrowup' : 'arrowdown'} 
-                          size={12} 
-                          color={currentReport.data.change >= 0 ? '#00cc66' : '#f44336'} 
-                        />
-                        <Text style={[
-                          styles.changeText,
-                          {
-                            color: currentReport.data.change >= 0
-                              ? '#00cc66'
-                              : '#f44336'
-                          }
-                        ]}>
-                          {Math.abs(currentReport.data.change).toFixed(1)}%
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              )}
-              
-              {currentReport.data && currentReport.data.breakdown && 
-               currentReport.data.breakdown.length > 0 && (
-                <View style={styles.reportCard}>
-                  <Text style={styles.cardTitle}>Breakdown</Text>
-                  
-                  {currentReport.data.breakdown.map((item, index) => (
-                    <View key={index} style={styles.breakdownItem}>
-                      <Text style={styles.breakdownCategory}>{item.category}</Text>
-                      <Text style={styles.breakdownValue}>
-                        {currentReport.type === 'financial' 
-                          ? formatCurrency(item.value)
-                          : formatNumber(item.value)}
-                      </Text>
+
+                {currentReport.chapter && (
+                  <View style={styles.reportedContentCard}>
+                    <View style={styles.reportedContentHeader}>
+                      <FontAwesome5 name="bookmark" size={16} color="#4a80f5" />
+                      <Text style={styles.reportedContentType}>Chapter</Text>
                     </View>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-            
-            {currentReport.status === 'pending' && (
-              <View style={styles.actionButtons}>
-                <TouchableOpacity 
-                  style={[styles.actionButton, styles.rejectButton]}
-                  onPress={() => handleRejectReport(currentReport.id)}
-                >
-                  <Text style={styles.rejectButtonText}>Reject</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.actionButton, styles.approveButton]}
-                  onPress={() => handleApproveReport(currentReport.id)}
-                >
-                  <Text style={styles.approveButtonText}>Approve</Text>
-                </TouchableOpacity>
+
+                    <View style={styles.contentDetailContainer}>
+                      <Text style={styles.contentTitle}>{currentReport.chapter.title || "Untitled Chapter"}</Text>
+                      {currentReport.chapter.bookTitle && (
+                        <Text style={styles.contentSubtitle}>From book: {currentReport.chapter.bookTitle}</Text>
+                      )}
+                      <TouchableOpacity
+                        style={styles.viewButton}
+                        onPress={() => {
+                          setDetailModalVisible(false);
+                          navigation.navigate("ReadingScreen", {
+                            chapterId: currentReport.chapter.id,
+                            bookId: currentReport.chapter.bookId,
+                          });
+                        }}
+                      >
+                        <Text style={styles.viewButtonText}>View Chapter</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {currentReport.comment && (
+                  <View style={styles.reportedContentCard}>
+                    <View style={styles.reportedContentHeader}>
+                      <FontAwesome5 name="comment" size={16} color="#4a80f5" />
+                      <Text style={styles.reportedContentType}>Comment</Text>
+                    </View>
+
+                    <View style={styles.contentDetailContainer}>
+                      <Text style={styles.commentContent}>"{currentReport.comment.content || "Empty comment"}"</Text>
+                      <Text style={styles.commentMeta}>- {currentReport.comment.user?.username || "Unknown user"}</Text>
+                      {currentReport.comment.bookTitle && (
+                        <Text style={styles.contentSubtitle}>On book: {currentReport.comment.bookTitle}</Text>
+                      )}
+                      {currentReport.comment.chapterTitle && (
+                        <Text style={styles.contentSubtitle}>On chapter: {currentReport.comment.chapterTitle}</Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {!currentReport.book && !currentReport.chapter && !currentReport.comment && (
+                  <Text style={styles.noContentText}>No specific content details available</Text>
+                )}
               </View>
-            )}
+            </ScrollView>
+
+            <View style={styles.actionButtons}>
+              {!currentReport.resolved ? (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.resolveButton]}
+                  onPress={() => handleResolveReport(currentReport.id, true)}
+                >
+                  <FontAwesome5 name="check-circle" size={16} color="#fff" />
+                  <Text style={styles.resolveButtonText}>Mark as Resolved</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.unresolveButton]}
+                  onPress={() => handleResolveReport(currentReport.id, false)}
+                >
+                  <FontAwesome5 name="undo" size={16} color="#fff" />
+                  <Text style={styles.unresolveButtonText}>Mark as Unresolved</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[styles.actionButton, styles.deleteReportButton]}
+                onPress={() => {
+                  setDetailModalVisible(false);
+                  handleDeleteReport(currentReport.id);
+                }}
+              >
+                <FontAwesome5 name="trash" size={16} color="#fff" />
+                <Text style={styles.deleteButtonText}>Delete Report</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
     );
   };
 
-  const renderGenerateModal = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={generateModalVisible}
-      onRequestClose={() => setGenerateModalVisible(false)}
-    >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Generate New Report</Text>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Report Title</Text>
-            <TextInput
-              style={styles.textInput}
-              value={reportTitle}
-              onChangeText={setReportTitle}
-              placeholder="e.g. Monthly Revenue"
-            />
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Report Type</Text>
-            <View style={styles.reportTypeSelector}>
-              {reportTypes.map(type => (
-                <TouchableOpacity 
-                  key={type.id}
-                  style={[
-                    styles.reportTypeOption,
-                    reportType === type.id && styles.selectedReportType
-                  ]}
-                  onPress={() => setReportType(type.id)}
-                >
-                  <FontAwesome5 
-                    name={type.icon} 
-                    size={16} 
-                    color={reportType === type.id ? "#4a80f5" : "#888"} 
-                    style={styles.reportTypeIcon}
-                  />
-                  <Text style={[
-                    styles.reportTypeText,
-                    reportType === type.id && styles.selectedReportTypeText
-                  ]}>
-                    {type.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Report Period</Text>
-            <TextInput
-              style={styles.textInput}
-              value={reportPeriod}
-              onChangeText={setReportPeriod}
-              placeholder="e.g. Jul 2023 or Q3 2023"
-            />
-          </View>
-
-          <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton]}
-              onPress={() => setGenerateModalVisible(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.modalButton, styles.generateButton]}
-              onPress={handleCreateReport}
-            >
-              <Text style={styles.generateButtonText}>Generate</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={styles.unauthorizedContainer}>
+        <StatusBar barStyle="dark-content" />
+        <MaterialIcons name="lock" size={80} color="#ccc" />
+        <Text style={styles.unauthorizedText}>You don't have permission to access this page</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      <View style={styles.titleContainer}>
+
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
         <Text style={styles.screenTitle}>Report Management</Text>
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{reports.length}</Text>
-            <Text style={styles.statLabel}>Total</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {reports.filter(r => r.status === 'pending').length}
-            </Text>
-            <Text style={styles.statLabel}>Pending</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {reports.filter(r => r.status === 'approved').length}
-            </Text>
-            <Text style={styles.statLabel}>Approved</Text>
-          </View>
+      </View>
+
+      <View style={styles.statsContainer}>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{reports.length}</Text>
+          <Text style={styles.statLabel}>Total</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{reports.filter((r) => !r.resolved).length}</Text>
+          <Text style={styles.statLabel}>Pending</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{reports.filter((r) => r.resolved).length}</Text>
+          <Text style={styles.statLabel}>Resolved</Text>
         </View>
       </View>
-      
+
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search reports by title or period..."
+          placeholder="Search by content, reason, or reporter..."
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
         {searchQuery ? (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
+          <TouchableOpacity onPress={() => setSearchQuery("")}>
             <Ionicons name="close-circle" size={20} color="#666" />
           </TouchableOpacity>
         ) : null}
       </View>
-      
+
       {renderFilters()}
-      
+
       <View style={styles.sortContainer}>
         <Text style={styles.sortLabel}>Sort by:</Text>
-        <TouchableOpacity 
-          style={styles.sortButton} 
-          onPress={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
-        >
-          <Text style={styles.sortButtonText}>
-            Date {sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}
-          </Text>
-          <Ionicons 
-            name={sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'} 
-            size={16} 
-            color="#666" 
-          />
+        <TouchableOpacity style={styles.sortButton} onPress={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}>
+          <Text style={styles.sortButtonText}>Date {sortOrder === "desc" ? "Newest first" : "Oldest first"}</Text>
+          <Ionicons name={sortOrder === "desc" ? "arrow-down" : "arrow-up"} size={16} color="#666" />
         </TouchableOpacity>
       </View>
-      
-      {loading ? (
+
+      {loading && reports.length === 0 ? (
         <ActivityIndicator size="large" color="#4a80f5" style={styles.loader} />
       ) : (
         <FlatList
-          data={filteredReports}
+          data={searchQuery ? filteredReports : reports}
           renderItem={renderItem}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.listContainer}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={["#4a80f5"]} tintColor="#4a80f5" />}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            hasMore && !refreshing && reports.length > 0 ? (
+              loading ? (
+                <ActivityIndicator color="#4a80f5" style={styles.footerLoader} />
+              ) : null
+            ) : null
+          }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <FontAwesome5 name="file-alt" size={60} color="#ccc" />
-              <Text style={styles.emptyText}>No reports found</Text>
-            </View>
+            !loading ? (
+              <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="flag-off-outline" size={60} color="#ccc" />
+                <Text style={styles.emptyText}>{searchQuery ? "No reports match your search" : "No reports found"}</Text>
+              </View>
+            ) : null
           }
         />
       )}
-      
-      <TouchableOpacity style={styles.addButton} onPress={handleGenerateReport}>
-        <FontAwesome5 name="file-medical" size={22} color="white" />
-      </TouchableOpacity>
-      
+
       {renderDetailModal()}
-      {renderGenerateModal()}
     </SafeAreaView>
   );
 };
@@ -763,46 +597,56 @@ const ReportManagementScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f7fa',
+    backgroundColor: "#f7f9fc",
   },
-  titleContainer: {
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
-    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: "#eaeaea",
+    backgroundColor: "#fff",
+  },
+  backBtn: {
+    marginRight: 10,
   },
   screenTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#333",
   },
   statsContainer: {
-    flexDirection: 'row',
-    marginTop: 8,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    padding: 16,
+    backgroundColor: "#fff",
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eaeaea",
   },
   statItem: {
-    marginRight: 24,
+    alignItems: "center",
   },
   statValue: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4a80f5',
+    fontWeight: "bold",
+    color: "#4a80f5",
   },
   statLabel: {
     fontSize: 12,
-    color: '#888',
+    color: "#888",
+    marginTop: 4,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
     borderRadius: 8,
     margin: 16,
     marginBottom: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -817,13 +661,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   filtersContainer: {
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     marginHorizontal: 16,
     marginTop: 8,
     marginBottom: 8,
     borderRadius: 8,
     padding: 12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -833,45 +677,45 @@ const styles = StyleSheet.create({
     paddingRight: 16,
   },
   filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
     marginRight: 8,
   },
   activeFilterButton: {
-    backgroundColor: '#4a80f5',
+    backgroundColor: "#4a80f5",
   },
   filterIcon: {
     marginRight: 6,
   },
   filterButtonText: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
   },
   activeFilterText: {
-    color: '#fff',
-    fontWeight: '500',
+    color: "#fff",
+    fontWeight: "500",
   },
   statusFilterContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: "#f0f0f0",
   },
   statusFilterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 4,
   },
   activeStatusFilter: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
   },
   miniStatusDot: {
     width: 8,
@@ -881,34 +725,34 @@ const styles = StyleSheet.create({
   },
   statusFilterText: {
     fontSize: 13,
-    color: '#666',
+    color: "#666",
   },
   activeStatusFilterText: {
-    fontWeight: '500',
-    color: '#444',
+    fontWeight: "500",
+    color: "#444",
   },
   sortContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
   sortLabel: {
     fontSize: 15,
-    color: '#666',
+    color: "#666",
     marginRight: 8,
   },
   sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
   },
   sortButtonText: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
     marginRight: 4,
   },
   listContainer: {
@@ -916,150 +760,132 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   reportItem: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
+    flexDirection: "row",
+    backgroundColor: "#fff",
     borderRadius: 10,
     marginBottom: 16,
-    padding: 12,
-    shadowColor: '#000',
+    padding: 16,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
   },
-  reportIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#f0f7ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+  resolvedReportItem: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#27ae60",
   },
-  reportIcon: {
-    opacity: 0.8,
+  reportIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
   },
   reportInfo: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  reportHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 5,
   },
   reportTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  reportPeriod: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  reportMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  generatedDate: {
-    fontSize: 12,
-    color: '#888',
-    marginRight: 12,
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+    flex: 1,
+    marginRight: 8,
   },
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 12,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 4,
   },
   statusText: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
+  },
+  reportType: {
+    fontSize: 13,
+    color: "#666",
+    marginBottom: 5,
+  },
+  reportReason: {
+    fontSize: 14,
+    color: "#444",
+    marginBottom: 8,
+  },
+  reportMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  reporterName: {
+    fontSize: 12,
+    color: "#888",
+  },
+  reportDate: {
+    fontSize: 12,
+    color: "#888",
   },
   moreButton: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 40,
-  },
-  addButton: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#4a80f5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    justifyContent: "center",
+    alignItems: "center",
+    width: 32,
   },
   emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
   },
   emptyText: {
     fontSize: 16,
-    color: '#888',
+    color: "#888",
     marginTop: 16,
+    textAlign: "center",
   },
   loader: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 40,
+  },
+  footerLoader: {
+    marginVertical: 15,
   },
   modalContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    width: '90%',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   detailModalContent: {
-    width: '90%',
-    height: '80%',
-    backgroundColor: '#fff',
+    width: "90%",
+    height: "85%",
+    backgroundColor: "#fff",
     borderRadius: 10,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: '#333',
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
   },
   closeButton: {
     padding: 4,
@@ -1069,210 +895,218 @@ const styles = StyleSheet.create({
   },
   detailScroll: {
     flex: 1,
-    padding: 16,
   },
-  reportHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  reportStatusBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
     marginBottom: 16,
   },
-  reportTypeIndicator: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#4a80f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  reportHeaderInfo: {
-    flex: 1,
-  },
-  detailTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  detailPeriod: {
+  reportStatusText: {
     fontSize: 16,
-    color: '#666',
+    fontWeight: "bold",
+    marginLeft: 8,
   },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  metaLabel: {
-    fontSize: 14,
-    color: '#666',
-    width: 100,
-  },
-  metaValue: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  reportCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
+  detailSection: {
+    backgroundColor: "#fff",
     padding: 16,
-    marginTop: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
   },
-  cardTitle: {
+  detailSectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 12,
   },
-  totalContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  detailRow: {
+    flexDirection: "row",
+    marginBottom: 8,
   },
-  totalValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+  detailLabel: {
+    width: 100,
+    fontSize: 14,
+    color: "#666",
+  },
+  detailValue: {
+    flex: 1,
+    fontSize: 14,
+    color: "#333",
+  },
+  typeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  typeText: {
+    fontSize: 14,
+    color: "#333",
+    marginLeft: 5,
+  },
+  reasonContainer: {
+    backgroundColor: "#f9f9f9",
+    padding: 12,
+    borderRadius: 8,
+  },
+  reasonText: {
+    fontSize: 14,
+    color: "#333",
+    lineHeight: 20,
+  },
+  reportedContentCard: {
+    backgroundColor: "#f9f9f9",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  reportedContentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  reportedContentType: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#4a80f5",
+    marginLeft: 8,
+  },
+  bookContainer: {
+    flexDirection: "row",
+  },
+  bookCover: {
+    width: 80,
+    height: 120,
+    borderRadius: 4,
     marginRight: 12,
   },
-  changeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+  bookInfo: {
+    flex: 1,
+    justifyContent: "center",
   },
-  changeText: {
+  bookTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 4,
+  },
+  bookAuthor: {
     fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 4,
+    color: "#666",
+    marginBottom: 16,
   },
-  breakdownItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  contentDetailContainer: {
+    padding: 4,
+  },
+  contentTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 4,
+  },
+  contentSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 12,
+  },
+  commentContent: {
+    fontSize: 14,
+    color: "#333",
+    fontStyle: "italic",
+    marginBottom: 8,
+  },
+  commentMeta: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 12,
+  },
+  viewButton: {
+    backgroundColor: "#4a80f5",
     paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: "center",
+    alignSelf: "flex-start",
   },
-  breakdownCategory: {
-    fontSize: 14,
-    color: '#555',
+  viewButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "500",
   },
-  breakdownValue: {
+  noContentText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    color: "#888",
+    fontStyle: "italic",
+    textAlign: "center",
+    padding: 12,
   },
   actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: "#f0f0f0",
   },
   actionButton: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 8,
-    alignItems: 'center',
+    marginHorizontal: 5,
   },
-  rejectButton: {
-    backgroundColor: '#f0f0f0',
-    marginRight: 10,
+  resolveButton: {
+    backgroundColor: "#27ae60",
   },
-  approveButton: {
-    backgroundColor: '#4a80f5',
+  unresolveButton: {
+    backgroundColor: "#f39c12",
   },
-  rejectButtonText: {
-    fontSize: 16,
-    color: '#f44336',
-    fontWeight: '500',
+  deleteReportButton: {
+    backgroundColor: "#e74c3c",
   },
-  approveButtonText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '500',
+  resolveButtonText: {
+    color: "#fff",
+    fontWeight: "500",
+    marginLeft: 8,
   },
-  inputGroup: {
-    marginBottom: 16,
+  unresolveButtonText: {
+    color: "#fff",
+    fontWeight: "500",
+    marginLeft: 8,
   },
-  inputLabel: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: '#555',
+  deleteButtonText: {
+    color: "#fff",
+    fontWeight: "500",
+    marginLeft: 8,
   },
-  textInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#f9f9f9',
-  },
-  reportTypeSelector: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
-  },
-  reportTypeOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
-    marginRight: 8,
-    marginBottom: 8,
-    width: (width * 0.9 - 64) / 2,
-  },
-  selectedReportType: {
-    backgroundColor: '#e0eaff',
-    borderWidth: 1,
-    borderColor: '#4a80f5',
-  },
-  reportTypeIcon: {
-    marginRight: 8,
-  },
-  reportTypeText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  selectedReportTypeText: {
-    color: '#4a80f5',
-    fontWeight: '500',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
-  },
-  modalButton: {
+  unauthorizedContainer: {
     flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#f7f9fc",
+  },
+  unauthorizedText: {
+    fontSize: 18,
+    color: "#555",
+    textAlign: "center",
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  backButton: {
+    backgroundColor: "#4a80f5",
     paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
-    alignItems: 'center',
   },
-  cancelButton: {
-    backgroundColor: '#f0f0f0',
-    marginRight: 10,
-  },
-  generateButton: {
-    backgroundColor: '#4a80f5',
-  },
-  cancelButtonText: {
+  backButtonText: {
+    color: "#fff",
     fontSize: 16,
-    color: '#555',
-  },
-  generateButtonText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '500',
+    fontWeight: "500",
   },
 });
 

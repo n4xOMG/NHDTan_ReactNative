@@ -28,7 +28,7 @@ export const fetchChatMessages = createAsyncThunk("chat/fetchChatMessages", asyn
   }
 });
 
-export const sendChatMessage = createAsyncThunk("chat/sendChatMessage", async (messageData, { rejectWithValue, getState }) => {
+export const sendChatMessage = createAsyncThunk("chat/sendChatMessage", async (messageData, { rejectWithValue }) => {
   try {
     // Make sure timestamp is included
     const messageWithTimestamp = {
@@ -37,7 +37,7 @@ export const sendChatMessage = createAsyncThunk("chat/sendChatMessage", async (m
     };
 
     const data = await sendMessage(messageWithTimestamp);
-    return data;
+    return { ...data, tempId: messageData.tempId };
   } catch (error) {
     return rejectWithValue(error.response?.data || error.message);
   }
@@ -49,6 +49,7 @@ const initialState = {
   chatMessages: {},
   loading: false,
   error: null,
+  wsConnected: false,
 };
 
 const chatSlice = createSlice({
@@ -60,15 +61,65 @@ const chatSlice = createSlice({
     },
     addReceivedMessage: (state, action) => {
       const { chatId, message } = action.payload;
+
+      // Initialize messages array if it doesn't exist
       if (!state.chatMessages[chatId]) {
         state.chatMessages[chatId] = [];
       }
 
-      // Check if message already exists to avoid duplicates
-      const messageExists = state.chatMessages[chatId].some((m) => m.id === message.id);
+      // Check for duplicates by id or tempId
+      const messageExists = state.chatMessages[chatId].some(
+        (m) => (m.id && m.id === message.id) || (m.tempId && message.tempId && m.tempId === message.tempId)
+      );
 
       if (!messageExists) {
+        // Add the message to the array
         state.chatMessages[chatId].push(message);
+
+        // Sort messages by timestamp
+        state.chatMessages[chatId].sort((a, b) => {
+          const dateA = a.timestamp ? new Date(a.timestamp) : new Date(0);
+          const dateB = b.timestamp ? new Date(b.timestamp) : new Date(0);
+          return dateA - dateB;
+        });
+
+        // Update last message in chat list
+        const chatIndex = state.chats.findIndex((chat) => chat.id === parseInt(chatId));
+        if (chatIndex !== -1) {
+          state.chats[chatIndex] = {
+            ...state.chats[chatIndex],
+            lastMessage: {
+              ...message,
+              createdAt: message.timestamp,
+            },
+          };
+        }
+      } else {
+        // If message exists, update it with new data
+        const existingIndex = state.chatMessages[chatId].findIndex(
+          (m) => (m.id && m.id === message.id) || (m.tempId && message.tempId && m.tempId === message.tempId)
+        );
+
+        if (existingIndex !== -1) {
+          state.chatMessages[chatId][existingIndex] = {
+            ...state.chatMessages[chatId][existingIndex],
+            ...message,
+            // Keep tempId for consistency
+            tempId: state.chatMessages[chatId][existingIndex].tempId || message.tempId,
+          };
+        }
+      }
+    },
+    setWebSocketConnected: (state, action) => {
+      state.wsConnected = action.payload;
+    },
+    markMessagesAsRead: (state, action) => {
+      const { chatId } = action.payload;
+      if (state.chatMessages[chatId]) {
+        state.chatMessages[chatId] = state.chatMessages[chatId].map((msg) => ({
+          ...msg,
+          isRead: true,
+        }));
       }
     },
     clearChatState: (state) => {
@@ -134,22 +185,37 @@ const chatSlice = createSlice({
       })
       // Send Chat Message
       .addCase(sendChatMessage.pending, (state) => {
-        state.loading = true;
         state.error = null;
       })
       .addCase(sendChatMessage.fulfilled, (state, action) => {
         state.loading = false;
         const chatId = action.payload.chatId;
+
         if (!state.chatMessages[chatId]) {
           state.chatMessages[chatId] = [];
+          return;
         }
 
-        // Check if message already exists
-        const messageExists = state.chatMessages[chatId].some((m) => m.id === action.payload.id);
+        // Find message with matching tempId
+        const tempId = action.payload.tempId;
+        if (!tempId) return;
 
-        if (!messageExists) {
-          state.chatMessages[chatId].push(action.payload);
+        const existingMessageIndex = state.chatMessages[chatId].findIndex((m) => m.tempId === tempId);
+
+        if (existingMessageIndex >= 0) {
+          // Update existing message with server data but keep tempId
+          state.chatMessages[chatId][existingMessageIndex] = {
+            ...action.payload,
+            tempId, // Keep tempId for identifying this message
+          };
         }
+
+        // Sort messages by timestamp
+        state.chatMessages[chatId].sort((a, b) => {
+          const dateA = a.timestamp ? new Date(a.timestamp) : new Date(0);
+          const dateB = b.timestamp ? new Date(b.timestamp) : new Date(0);
+          return dateA - dateB;
+        });
       })
       .addCase(sendChatMessage.rejected, (state, action) => {
         state.loading = false;
@@ -158,5 +224,5 @@ const chatSlice = createSlice({
   },
 });
 
-export const { setActiveChat, addReceivedMessage, clearChatState } = chatSlice.actions;
+export const { setActiveChat, addReceivedMessage, clearChatState, setWebSocketConnected, markMessagesAsRead } = chatSlice.actions;
 export default chatSlice.reducer;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   Image,
   Alert,
 } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useDispatch, useSelector } from "react-redux";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -24,12 +24,15 @@ import {
   setActiveChat,
   addReceivedMessage,
   clearChatState,
+  setWebSocketConnected,
+  markMessagesAsRead,
 } from "../redux/slices/chatSlice";
 import {
   connectToWebSocket,
   disconnectWebSocket,
   subscribeToChatMessages,
   sendChatMessage as sendWsMessage,
+  isWebSocketConnected,
 } from "../services/ChatService";
 import UploadToCloudinary from "../utils/uploadToCloudinary";
 
@@ -48,25 +51,112 @@ const ChatScreen = () => {
   const chatMessages = useSelector((state) => (state.chat.activeChat ? state.chat.chatMessages[state.chat.activeChat.id] || [] : []));
   const loading = useSelector((state) => state.chat.loading);
   const error = useSelector((state) => state.chat.error);
+  const wsConnected = useSelector((state) => state.chat.wsConnected);
+
+  const subscriptionRef = useRef(null);
+
+  // Handle incoming messages from websocket
+  const handleReceivedMessage = useCallback(
+    (receivedMessage) => {
+      if (!activeChat) return;
+
+      console.log("Processing received message:", receivedMessage);
+
+      // Ensure message has the correct format
+      const formattedMessage = {
+        ...receivedMessage,
+        chatId: activeChat.id,
+        tempId: receivedMessage.tempId || `temp-${Date.now()}-${Math.random()}`,
+      };
+
+      dispatch(
+        addReceivedMessage({
+          chatId: activeChat.id,
+          message: formattedMessage,
+        })
+      );
+
+      if (receivedMessage.sender && receivedMessage.sender.id !== currentUser.id) {
+        dispatch(markMessagesAsRead({ chatId: activeChat.id }));
+      }
+    },
+    [activeChat, currentUser, dispatch]
+  );
 
   useEffect(() => {
-    // Set the chat partner's name as the title
     navigation.setOptions({
       title: username || "Chat",
     });
 
-    // Initialize chat
     initializeChat();
 
-    // Cleanup on component unmount
     return () => {
+      if (subscriptionRef.current) {
+        try {
+          subscriptionRef.current.unsubscribe();
+          subscriptionRef.current = null;
+        } catch (error) {
+          console.error("Error unsubscribing:", error);
+        }
+      }
       disconnectWebSocket();
       dispatch(clearChatState());
     };
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      const checkAndReconnect = async () => {
+        if (!isWebSocketConnected()) {
+          console.log("WebSocket disconnected, reconnecting...");
+          connectToWebSocket(() => {
+            dispatch(setWebSocketConnected(true));
+            setupChatSubscription();
+          });
+        }
+      };
+
+      checkAndReconnect();
+      const intervalId = setInterval(checkAndReconnect, 10000);
+
+      return () => clearInterval(intervalId);
+    }, [activeChat])
+  );
+
+  const setupChatSubscription = useCallback(() => {
+    if (!activeChat) return;
+
+    console.log("Setting up chat subscription for chat ID:", activeChat.id);
+
+    const attemptSubscription = (retries = 3, delay = 1000) => {
+      if (!isWebSocketConnected()) {
+        if (retries > 0) {
+          console.log(`WebSocket not connected, retrying in ${delay}ms...`);
+          setTimeout(() => attemptSubscription(retries - 1, delay * 2), delay);
+        } else {
+          console.error("Failed to subscribe: WebSocket not connected after retries");
+        }
+        return;
+      }
+
+      const subscription = subscribeToChatMessages(activeChat.id, handleReceivedMessage);
+      if (subscription) {
+        subscriptionRef.current = subscription;
+      }
+
+      dispatch(markMessagesAsRead({ chatId: activeChat.id }));
+    };
+
+    attemptSubscription();
+  }, [activeChat, handleReceivedMessage, dispatch]);
+
   useEffect(() => {
-    // Scroll to bottom when messages change
+    if (activeChat) {
+      setupChatSubscription();
+    }
+  }, [activeChat, setupChatSubscription]);
+
+  useEffect(() => {
     if (chatMessages.length > 0 && flatListRef.current) {
       setTimeout(() => {
         flatListRef.current.scrollToEnd({ animated: true });
@@ -76,41 +166,28 @@ const ChatScreen = () => {
 
   const initializeChat = async () => {
     try {
-      // Create or get existing chat with the other user
       const chatAction = await dispatch(createChat(otherUserId));
       if (createChat.fulfilled.match(chatAction)) {
         const chat = chatAction.payload;
         console.log("Chat created/retrieved:", chat);
 
-        // Set active chat
         dispatch(setActiveChat(chat));
-
-        // Fetch messages for this chat
         dispatch(fetchChatMessages(chat.id));
 
-        // Connect to WebSocket
         connectToWebSocket(() => {
-          // Subscribe to chat messages once connected
-          subscribeToChatMessages(chat.id, (receivedMessage) => {
-            console.log("Received message via WebSocket:", receivedMessage);
-
-            // Only add the message if it's from the other user
-            // This prevents duplicate messages when sending messages through both API and WebSocket
-            if (receivedMessage.sender && receivedMessage.sender.id !== currentUser.id) {
-              dispatch(addReceivedMessage({ chatId: chat.id, message: receivedMessage }));
-            }
-          });
+          dispatch(setWebSocketConnected(true));
+          setupChatSubscription();
         });
       }
     } catch (error) {
       console.error("Error initializing chat:", error);
+      dispatch(setWebSocketConnected(false));
     }
   };
 
   const pickImage = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (!permissionResult.granted) {
         Alert.alert("Permission required", "You need to give permission to access your photos");
         return;
@@ -119,11 +196,36 @@ const ChatScreen = () => {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.4, // Further reduce quality to help with upload
+        base64: false,
+        exif: false,
+        aspect: [4, 3],
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        setSelectedImage(result.assets[0]);
+        console.log("Selected image:", {
+          uri: result.assets[0].uri,
+          fileSize: result.assets[0].fileSize,
+          width: result.assets[0].width,
+          height: result.assets[0].height,
+        });
+
+        // Check file size - warn if over 2MB
+        if (result.assets[0].fileSize && result.assets[0].fileSize > 2 * 1024 * 1024) {
+          Alert.alert("Large Image", "The selected image is large and may take longer to upload. Continue?", [
+            {
+              text: "Cancel",
+              style: "cancel",
+              onPress: () => setSelectedImage(null),
+            },
+            {
+              text: "Continue",
+              onPress: () => setSelectedImage(result.assets[0]),
+            },
+          ]);
+        } else {
+          setSelectedImage(result.assets[0]);
+        }
       }
     } catch (error) {
       console.error("Error picking image:", error);
@@ -135,16 +237,71 @@ const ChatScreen = () => {
     if ((!message.trim() && !selectedImage) || !activeChat) return;
 
     try {
-      setIsUploading(selectedImage !== null);
+      const tempId = `temp-${Date.now()}-${Math.random()}`;
 
-      // Upload image if selected
       let imageUrl = null;
       if (selectedImage) {
-        imageUrl = await UploadToCloudinary(selectedImage, "chat_images");
+        setIsUploading(true);
+        console.log("Starting image upload process...");
+
+        try {
+          // Create a properly formatted image object with minimal properties
+          const imageToUpload = {
+            uri: selectedImage.uri,
+            type: "image/jpeg", // Force JPEG for better compatibility
+            name: `chat_image_${Date.now()}.jpg`,
+          };
+
+          console.log("Prepared image for upload:", imageToUpload);
+
+          // First add the message without the image
+          const initialMessage = {
+            chatId: activeChat.id,
+            content: message.trim(),
+            sender: {
+              id: currentUser.id,
+              username: currentUser.username,
+              email: currentUser.email,
+              fullname: currentUser.fullname,
+              avatarUrl: currentUser.avatarUrl,
+            },
+            receiver: {
+              id: otherUserId,
+            },
+            timestamp: new Date().toISOString(),
+            tempId: tempId,
+            isUploading: true,
+          };
+
+          // Show the message with "uploading..." immediately
+          dispatch(
+            addReceivedMessage({
+              chatId: activeChat.id,
+              message: initialMessage,
+            })
+          );
+
+          // Upload the image
+          imageUrl = await UploadToCloudinary(imageToUpload, "chat_images");
+          console.log("Image upload successful, URL:", imageUrl);
+        } catch (uploadError) {
+          console.error("Image upload error:", uploadError);
+
+          // Send text-only message if image upload fails
+          if (message.trim()) {
+            Alert.alert("Upload failed", "Could not upload image, but your text message will be sent.", [{ text: "OK" }]);
+          } else {
+            setIsUploading(false);
+            Alert.alert(
+              "Upload failed",
+              "Could not upload image. Please try again with a smaller image or check your internet connection."
+            );
+            return;
+          }
+        }
       }
 
-      // Create complete message data with sender information
-      const messageData = {
+      const finalMessageData = {
         chatId: activeChat.id,
         content: message.trim(),
         imageUrl: imageUrl,
@@ -159,40 +316,111 @@ const ChatScreen = () => {
           id: otherUserId,
         },
         timestamp: new Date().toISOString(),
+        tempId: tempId,
       };
 
-      console.log("Sending message:", messageData);
+      console.log("Sending message with data:", {
+        tempId: finalMessageData.tempId,
+        chatId: finalMessageData.chatId,
+        content: finalMessageData.content,
+        hasImage: !!finalMessageData.imageUrl,
+        timestamp: finalMessageData.timestamp,
+      });
 
-      // Send through API
-      dispatch(sendChatMessage(messageData));
+      // Update with final message data including image URL if upload was successful
+      dispatch(
+        addReceivedMessage({
+          chatId: activeChat.id,
+          message: finalMessageData,
+        })
+      );
 
-      // Also send through WebSocket for real-time delivery
-      sendWsMessage(activeChat.id, messageData);
+      // Send message to server
+      dispatch(sendChatMessage(finalMessageData));
 
-      // Clear input and selected image
+      // Also send via WebSocket for real-time delivery
+      sendWsMessage(activeChat.id, finalMessageData);
+
+      // Clear input
       setMessage("");
       setSelectedImage(null);
       setIsUploading(false);
+
+      // Scroll to bottom
+      if (flatListRef.current) {
+        setTimeout(() => {
+          flatListRef.current.scrollToEnd({ animated: true });
+        }, 100);
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       setIsUploading(false);
-      Alert.alert("Error", "Failed to send message");
+
+      // Still allow sending text message if there was an error with the image
+      if (message.trim() && selectedImage) {
+        Alert.alert("Partial Error", "Could not send the image, but would you like to send just the text message?", [
+          {
+            text: "No",
+            style: "cancel",
+          },
+          {
+            text: "Yes",
+            onPress: () => {
+              // Send text-only message
+              handleSendTextOnly(message.trim());
+            },
+          },
+        ]);
+      } else {
+        Alert.alert("Error", "Failed to send message: " + error.message);
+      }
     }
   };
 
+  // Helper to send text-only message when image upload fails
+  const handleSendTextOnly = (textContent) => {
+    if (!textContent || !activeChat) return;
+
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+
+    const textMessage = {
+      chatId: activeChat.id,
+      content: textContent,
+      sender: {
+        id: currentUser.id,
+        username: currentUser.username,
+        email: currentUser.email,
+        fullname: currentUser.fullname,
+        avatarUrl: currentUser.avatarUrl,
+      },
+      receiver: {
+        id: otherUserId,
+      },
+      timestamp: new Date().toISOString(),
+      tempId: tempId,
+    };
+
+    dispatch(
+      addReceivedMessage({
+        chatId: activeChat.id,
+        message: textMessage,
+      })
+    );
+
+    dispatch(sendChatMessage(textMessage));
+    sendWsMessage(activeChat.id, textMessage);
+
+    setMessage("");
+    setSelectedImage(null);
+  };
+
+  // Get the other user in this conversation
   const getOtherUser = () => {
     if (!activeChat) return null;
-
-    // Determine which user in the chat is not the current user
-    if (activeChat.userOne.id === currentUser.id) {
-      return activeChat.userTwo;
-    } else {
-      return activeChat.userOne;
-    }
+    return activeChat.userOne.id === currentUser.id ? activeChat.userTwo : activeChat.userOne;
   };
 
   const renderMessage = ({ item }) => {
-    // Determine if the message is from the current user
     const isMyMessage = item.sender && item.sender.id === currentUser.id;
 
     return (
@@ -200,16 +428,29 @@ const ChatScreen = () => {
         {item.content && item.content.trim() !== "" && (
           <Text style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.theirMessageText]}>{item.content}</Text>
         )}
+
+        {item.isUploading && (
+          <View style={styles.uploadingContainer}>
+            <ActivityIndicator size="small" color={isMyMessage ? "white" : "#3498db"} />
+            <Text style={[styles.uploadingText, isMyMessage ? { color: "white" } : { color: "#666" }]}>Uploading image...</Text>
+          </View>
+        )}
+
         {item.imageUrl && (
           <TouchableOpacity
             onPress={() => {
-              // You could add a lightbox or full-screen image view here
               console.log("Image pressed:", item.imageUrl);
             }}
           >
-            <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
+            <Image
+              source={{ uri: item.imageUrl }}
+              style={styles.messageImage}
+              resizeMode="cover"
+              onError={(e) => console.error("Image loading error:", e.nativeEvent.error)}
+            />
           </TouchableOpacity>
         )}
+
         <Text style={[styles.messageTime, isMyMessage ? styles.myMessageTime : styles.theirMessageTime]}>
           {item.timestamp
             ? new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -219,6 +460,7 @@ const ChatScreen = () => {
     );
   };
 
+  // Show loading indicator while initializing chat
   if (loading && !activeChat) {
     return (
       <View style={styles.centered}>
@@ -227,6 +469,7 @@ const ChatScreen = () => {
     );
   }
 
+  // Show error message if there's an error
   if (error) {
     return (
       <View style={styles.centered}>
@@ -240,6 +483,19 @@ const ChatScreen = () => {
 
   const otherUser = getOtherUser();
 
+  const renderConnectionStatus = () => {
+    if (!wsConnected) {
+      return (
+        <TouchableOpacity style={styles.connectionStatusBanner} onPress={() => initializeChat()}>
+          <Text style={styles.connectionStatusText}>
+            <Ionicons name="wifi-outline" size={16} color="#fff" /> Reconnecting...
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+    return null;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -252,15 +508,17 @@ const ChatScreen = () => {
             <Image source={{ uri: otherUser.avatarUrl || "https://via.placeholder.com/40" }} style={styles.headerAvatar} />
             <View style={styles.headerInfo}>
               <Text style={styles.headerName}>{otherUser.fullname || otherUser.username}</Text>
-              <Text style={styles.headerStatus}>Online</Text>
+              <Text style={styles.headerStatus}>{wsConnected ? "Online" : "Connecting..."}</Text>
             </View>
           </View>
         )}
 
+        {renderConnectionStatus()}
+
         <FlatList
           ref={flatListRef}
           data={chatMessages}
-          keyExtractor={(item, index) => (item.id ? item.id.toString() : index.toString())}
+          keyExtractor={(item, index) => (item.id ? item.id.toString() : item.tempId || index.toString())}
           renderItem={renderMessage}
           contentContainerStyle={[styles.messagesContainer, chatMessages.length === 0 && styles.emptyMessagesContainer]}
           ListEmptyComponent={
@@ -281,11 +539,18 @@ const ChatScreen = () => {
         )}
 
         <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.attachButton} onPress={pickImage}>
-            <Ionicons name="image-outline" size={24} color="#3498db" />
+          <TouchableOpacity style={styles.attachButton} onPress={pickImage} disabled={isUploading}>
+            <Ionicons name="image-outline" size={24} color={isUploading ? "#cccccc" : "#3498db"} />
           </TouchableOpacity>
 
-          <TextInput style={styles.input} value={message} onChangeText={setMessage} placeholder="Type a message..." multiline />
+          <TextInput
+            style={styles.input}
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Type a message..."
+            multiline
+            editable={!isUploading}
+          />
 
           {isUploading ? (
             <View style={styles.sendButton}>
@@ -295,7 +560,7 @@ const ChatScreen = () => {
             <TouchableOpacity
               style={[styles.sendButton, !message.trim() && !selectedImage && styles.sendButtonDisabled]}
               onPress={handleSend}
-              disabled={!message.trim() && !selectedImage}
+              disabled={(!message.trim() && !selectedImage) || isUploading}
             >
               <Ionicons name="send" size={20} color="white" />
             </TouchableOpacity>
@@ -478,6 +743,25 @@ const styles = StyleSheet.create({
     padding: 10,
     justifyContent: "center",
     alignItems: "center",
+  },
+  connectionStatusBanner: {
+    backgroundColor: "#e74c3c",
+    padding: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  connectionStatusText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  uploadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 5,
+  },
+  uploadingText: {
+    marginLeft: 5,
+    fontSize: 12,
   },
 });
 

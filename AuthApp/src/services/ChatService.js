@@ -1,10 +1,11 @@
 import { api, API_BASE_URL } from "../api/api";
 import SockJS from "sockjs-client";
-import { Stomp } from "@stomp/stompjs";
+import { Client } from "@stomp/stompjs";
 
 let stompClient = null;
-let isConnected = false;
-let onConnectCallback = null;
+let subscriptions = {}; // Track active subscriptions
+let isConnecting = false;
+let reconnectTimer = null;
 
 // Create or get existing chat
 export const createOrGetChat = async (otherUserId) => {
@@ -42,21 +43,23 @@ export const getChatMessages = async (chatId) => {
 // Send a message
 export const sendMessage = async (messageData) => {
   try {
-    // Ensure all required fields are present in the message data
     if (!messageData.sender || !messageData.sender.id) {
       throw new Error("Sender information is missing");
     }
-
     if (!messageData.receiver || !messageData.receiver.id) {
       throw new Error("Receiver information is missing");
     }
-
-    // Include timestamp if not present
     if (!messageData.timestamp) {
       messageData.timestamp = new Date().toISOString();
     }
 
-    const response = await api.post(`${API_BASE_URL}/api/chats/create-message`, messageData);
+    // Remove imageUrl if it's null to prevent potential server issues
+    const dataToSend = { ...messageData };
+    if (!dataToSend.imageUrl) {
+      delete dataToSend.imageUrl;
+    }
+
+    const response = await api.post(`${API_BASE_URL}/api/chats/create-message`, dataToSend);
     return response.data;
   } catch (error) {
     console.error("Error sending message:", error);
@@ -66,80 +69,180 @@ export const sendMessage = async (messageData) => {
 
 // WebSocket functionality
 export const connectToWebSocket = (callback) => {
-  if (isConnected && stompClient) {
+  if (isConnecting) {
+    console.log("WebSocket connection already in progress");
+    return;
+  }
+
+  if (stompClient && stompClient.connected) {
+    console.log("WebSocket already connected");
     if (callback) callback();
     return;
   }
 
-  onConnectCallback = callback;
+  isConnecting = true;
+  clearTimeout(reconnectTimer);
 
-  const socket = new SockJS(`${API_BASE_URL}/ws`);
-  stompClient = Stomp.over(socket);
-
-  stompClient.connect(
-    {},
-    () => {
-      console.log("WebSocket connected");
-      isConnected = true;
-      if (onConnectCallback) onConnectCallback();
-    },
-    (error) => {
-      console.error("WebSocket connection error:", error);
-      isConnected = false;
-      // Attempt to reconnect after a delay
-      setTimeout(() => connectToWebSocket(callback), 5000);
+  // Clean up any existing connection
+  if (stompClient) {
+    try {
+      stompClient.deactivate();
+    } catch (e) {
+      console.error("Error deactivating existing STOMP client:", e);
     }
-  );
+  }
+
+  console.log("Connecting to WebSocket...");
+
+  // Create a WebSocket factory for SockJS
+  const webSocketFactory = () => {
+    console.log("Creating new SockJS instance");
+    return new SockJS(`${API_BASE_URL}/ws`);
+  };
+
+  // Initialize STOMP client
+  stompClient = new Client({
+    webSocketFactory,
+    reconnectDelay: 5000, // Reconnect every 5 seconds
+    heartbeatIncoming: 4000, // Heartbeat to keep connection alive
+    heartbeatOutgoing: 4000,
+  });
+
+  // Handle connection success
+  stompClient.onConnect = (frame) => {
+    console.log("WebSocket connected successfully:", frame);
+    isConnecting = false;
+    if (callback) callback();
+  };
+
+  // Handle connection errors
+  stompClient.onStompError = (frame) => {
+    console.error("STOMP Error:", frame);
+    isConnecting = false;
+
+    // Clear subscriptions on error
+    subscriptions = {};
+
+    // Attempt to reconnect
+    reconnectTimer = setTimeout(() => {
+      connectToWebSocket(callback);
+    }, 5000);
+  };
+
+  // Handle WebSocket disconnection
+  stompClient.onWebSocketClose = (event) => {
+    console.log("WebSocket disconnected:", event);
+    isConnecting = false;
+    subscriptions = {};
+
+    // Attempt to reconnect
+    reconnectTimer = setTimeout(() => {
+      connectToWebSocket(callback);
+    }, 5000);
+  };
+
+  // Activate the STOMP client
+  try {
+    stompClient.activate();
+  } catch (error) {
+    console.error("Error activating STOMP client:", error);
+    isConnecting = false;
+
+    // Attempt to reconnect
+    reconnectTimer = setTimeout(() => {
+      connectToWebSocket(callback);
+    }, 5000);
+  }
 };
 
 export const disconnectWebSocket = () => {
-  if (stompClient && isConnected) {
-    stompClient.disconnect();
-    isConnected = false;
-    console.log("WebSocket disconnected");
+  clearTimeout(reconnectTimer);
+  isConnecting = false;
+
+  if (stompClient) {
+    // Unsubscribe from all active subscriptions
+    Object.values(subscriptions).forEach((sub) => {
+      try {
+        if (sub && typeof sub.unsubscribe === "function") {
+          sub.unsubscribe();
+        }
+      } catch (error) {
+        console.error("Error unsubscribing:", error);
+      }
+    });
+    subscriptions = {};
+
+    try {
+      stompClient.deactivate();
+      console.log("WebSocket disconnected");
+    } catch (error) {
+      console.error("Error disconnecting WebSocket:", error);
+    } finally {
+      stompClient = null;
+    }
   }
+};
+
+export const isWebSocketConnected = () => {
+  return stompClient !== null && stompClient.connected;
 };
 
 export const subscribeToChatMessages = (chatId, callback) => {
-  if (!isConnected || !stompClient) {
+  if (!stompClient || !stompClient.connected) {
     console.error("Cannot subscribe, WebSocket not connected");
-    return;
+    return null;
   }
 
-  // Unsubscribe previous subscription to avoid duplicates
-  try {
-    stompClient.unsubscribe(`/group/${chatId}/private`);
-  } catch (error) {
-    // Ignore errors if there was no previous subscription
-  }
-
-  const subscription = stompClient.subscribe(`/group/${chatId}/private`, (message) => {
+  // Unsubscribe previous subscription for this chat
+  if (subscriptions[chatId]) {
     try {
-      const receivedMessage = JSON.parse(message.body);
-      console.log("Received WebSocket message:", receivedMessage);
-      if (callback) callback(receivedMessage);
+      subscriptions[chatId].unsubscribe();
+      console.log(`Unsubscribed from previous subscription for chat ${chatId}`);
     } catch (error) {
-      console.error("Error parsing received message:", error);
+      console.error(`Error unsubscribing from chat ${chatId}:`, error);
     }
-  });
+  }
 
-  console.log(`Subscribed to chat ${chatId}`);
-  return subscription;
+  const destination = `/group/${chatId}/private`;
+  console.log(`Subscribing to destination: ${destination}`);
+
+  try {
+    const subscription = stompClient.subscribe(destination, (message) => {
+      try {
+        const receivedMessage = JSON.parse(message.body);
+        console.log("Received WebSocket message:", receivedMessage);
+        if (callback) callback(receivedMessage);
+      } catch (error) {
+        console.error("Error parsing received message:", error);
+      }
+    });
+
+    // Store the subscription reference
+    subscriptions[chatId] = subscription;
+    console.log(`Subscribed to chat ${chatId}`);
+
+    return subscription;
+  } catch (error) {
+    console.error(`Error subscribing to chat ${chatId}:`, error);
+    return null;
+  }
 };
 
 export const sendChatMessage = (chatId, messageData) => {
-  if (!isConnected || !stompClient) {
+  if (!stompClient || !stompClient.connected) {
     console.error("Cannot send message, WebSocket not connected");
     return;
   }
 
-  // Ensure timestamp is set
   if (!messageData.timestamp) {
     messageData.timestamp = new Date().toISOString();
   }
 
   try {
-    stompClient.send(`/app/chat/${chatId}`, {}, JSON.stringify(messageData));
+    stompClient.publish({
+      destination: `/app/chat/${chatId}`,
+      body: JSON.stringify(messageData),
+    });
     console.log("Message sent via WebSocket:", messageData);
   } catch (error) {
     console.error("Error sending message via WebSocket:", error);
