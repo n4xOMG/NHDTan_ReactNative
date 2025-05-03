@@ -2,7 +2,6 @@ import { AntDesign, Ionicons, MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -15,34 +14,20 @@ import {
   Modal,
   TextInput,
   Alert,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDispatch, useSelector } from "react-redux";
 import { useFocusEffect } from "@react-navigation/native";
 import ChapterList from "../components/ChapterList";
 import CommentsList from "../components/CommentList";
+import ProgressBar from "../components/ProgressBar";
 import { fetchReadingProgressByBookId } from "../redux/slices/bookSlice";
 import { shareBook } from "../redux/slices/postSlice";
 import { getBookById, getUserFavStatus, toggleUserFavStatus } from "../services/BookServices";
 import { getChaptersByBookId } from "../services/ChapterServices";
 import { reportBook } from "../services/ReportServices";
 import { bookdetailstyles } from "../style/bookdetailstyles";
-
-// Custom ProgressBar Component
-const ProgressBar = ({ progress, color, style, height, borderRadius, unfilledColor }) => {
-  return (
-    <View style={[{ height: height || 10, borderRadius: borderRadius || 4, backgroundColor: unfilledColor || "#e0e0e0" }, style]}>
-      <View
-        style={{
-          width: `${progress * 100}%`,
-          height: "100%",
-          backgroundColor: color || "#3498db",
-          borderRadius: borderRadius || 4,
-        }}
-      />
-    </View>
-  );
-};
 
 export default function BookDetail({ route, navigation }) {
   const { bookId } = route.params;
@@ -274,7 +259,8 @@ export default function BookDetail({ route, navigation }) {
     }
   };
 
-  const renderHeader = () => (
+  // Function previously used as renderHeader
+  const renderBookContent = () => (
     <>
       {/* Status bar with proper color */}
       <StatusBar backgroundColor="#2c3e50" barStyle="light-content" />
@@ -375,6 +361,17 @@ export default function BookDetail({ route, navigation }) {
               <ChapterList chapters={bookData.chapters} navigation={navigation} onChapterUnlocked={handleChapterUnlocked} bookId={bookId} />
             </View>
           )}
+
+          {/* Comments section */}
+          {!uiState.loading && bookData.book && (
+            <>
+              <View style={bookdetailstyles.sectionHeader}>
+                <MaterialIcons name="chat" size={18} color="#3498db" />
+                <Text style={bookdetailstyles.sectionTitle}>Comments</Text>
+              </View>
+              <CommentsList bookId={bookId} isNested={true} />
+            </>
+          )}
         </View>
       )}
     </>
@@ -387,27 +384,16 @@ export default function BookDetail({ route, navigation }) {
         behavior={Platform.OS === "ios" ? "padding" : null}
         keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
       >
-        <FlatList
-          data={[]} // Empty since using header for content
-          ListHeaderComponent={renderHeader}
-          ListFooterComponent={
-            !uiState.loading &&
-            bookData.book && (
-              <>
-                <View style={bookdetailstyles.sectionHeader}>
-                  <MaterialIcons name="chat" size={18} color="#3498db" />
-                  <Text style={bookdetailstyles.sectionTitle}>Comments</Text>
-                </View>
-                <CommentsList bookId={bookId} />
-              </>
-            )
-          }
+        <ScrollView
           style={bookdetailstyles.container}
           contentContainerStyle={bookdetailstyles.listContentContainer}
           refreshControl={
             <RefreshControl refreshing={uiState.refreshing} onRefresh={handleRefresh} colors={["#3498db"]} tintColor="#3498db" />
           }
-        />
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderBookContent()}
+        </ScrollView>
 
         {/* Share Book Modal */}
         <Modal visible={showShareModal} transparent={true} animationType="slide" onRequestClose={() => setShowShareModal(false)}>

@@ -2,7 +2,7 @@ const generateUniqueUploadId = () => {
   return `uqid-${Date.now()}`;
 };
 
-export const UploadToCloudinary = async (file, folder) => {
+export const UploadToCloudinary = async (file, folder, retryCount = 0) => {
   if (!file || !file.uri) {
     console.error("UploadToCloudinary: Please select a valid file.");
     return;
@@ -25,13 +25,34 @@ export const UploadToCloudinary = async (file, folder) => {
     throw new Error("Missing Cloudinary configuration");
   }
 
+  // Ensure the file URI is valid - remove file:// prefix if on Android
+  let fileUri = file.uri;
+  if (Platform.OS === "android" && fileUri.startsWith("file://")) {
+    fileUri = fileUri.replace("file://", "");
+  }
+
   const formData = new FormData();
+
+  // Ensure proper MIME type based on file extension
+  let mimeType = file.type || "image/jpeg";
+  if (!mimeType || mimeType === "image") {
+    // Try to infer mime type from extension
+    if (fileUri.toLowerCase().endsWith(".png")) {
+      mimeType = "image/png";
+    } else if (fileUri.toLowerCase().endsWith(".jpg") || fileUri.toLowerCase().endsWith(".jpeg")) {
+      mimeType = "image/jpeg";
+    } else if (fileUri.toLowerCase().endsWith(".gif")) {
+      mimeType = "image/gif";
+    } else if (fileUri.toLowerCase().endsWith(".webp")) {
+      mimeType = "image/webp";
+    }
+  }
 
   // Prepare file object with proper MIME type
   const fileToUpload = {
     uri: file.uri,
-    type: file.type || "image/jpeg", // Default type if missing
-    name: file.name || `upload_${Date.now()}.jpg`,
+    type: mimeType,
+    name: file.name || `upload_${Date.now()}.${mimeType.split("/")[1] || "jpg"}`,
   };
 
   console.log("UploadToCloudinary: Preparing file for upload:", fileToUpload);
@@ -47,13 +68,22 @@ export const UploadToCloudinary = async (file, folder) => {
   try {
     console.log("UploadToCloudinary: Starting fetch request...");
 
-    const response = await fetch(uploadUrl, {
+    // Set a timeout for the fetch request
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Upload request timed out")), 30000); // 30 second timeout
+    });
+
+    // Create fetch promise
+    const fetchPromise = fetch(uploadUrl, {
       method: "POST",
       body: formData,
       headers: {
         Accept: "application/json",
       },
     });
+
+    // Race between fetch and timeout
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
 
     console.log("UploadToCloudinary: Response status:", response.status);
     console.log("UploadToCloudinary: Response headers:", JSON.stringify(response.headers));
@@ -88,6 +118,14 @@ export const UploadToCloudinary = async (file, folder) => {
         statusText: error.response.statusText,
         headers: error.response.headers,
       });
+    }
+
+    // Implement retry logic (maximum 2 retries)
+    if (retryCount < 2 && (error.message.includes("Network request failed") || error.message.includes("timed out"))) {
+      console.log(`UploadToCloudinary: Retrying upload (attempt ${retryCount + 1})...`);
+      // Wait 2 seconds before retrying
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return UploadToCloudinary(file, folder, retryCount + 1);
     }
 
     throw error;

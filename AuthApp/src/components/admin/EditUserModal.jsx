@@ -18,6 +18,7 @@ const EditUserModal = ({
   setBanReason,
   setIsBanned,
   handleSave,
+  handleDeleteUser,
 }) => {
   return (
     <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
@@ -115,6 +116,13 @@ const EditUserModal = ({
           )}
 
           <View style={usermanagestyles.modalButtons}>
+            <TouchableOpacity
+              style={[usermanagestyles.modalButton, usermanagestyles.deleteButton]}
+              onPress={() => currentUser && handleDeleteUser(currentUser.id)}
+            >
+              <Text style={usermanagestyles.deleteButtonText}>Delete</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={[usermanagestyles.modalButton, usermanagestyles.cancelButton]} onPress={() => setModalVisible(false)}>
               <Text style={usermanagestyles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>

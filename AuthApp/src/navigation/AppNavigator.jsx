@@ -30,6 +30,7 @@ import CollaborativeEditorScreen from "../screens/UserBooks/CollaborativeEditorS
 import UserProfileScreen from "../screens/UserProfileScreen";
 import ImageGalleryScreen from "../screens/ImageGalleryScreen";
 import ChatScreen from "../screens/ChatScreen";
+import EditPostScreen from "../screens/EditPostScreen";
 
 const Stack = createStackNavigator();
 
@@ -112,6 +113,7 @@ const AppNavigator = () => {
             animationEnabled: true,
           }}
         />
+        <Stack.Screen name="EditPost" component={EditPostScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

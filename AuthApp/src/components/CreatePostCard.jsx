@@ -59,14 +59,52 @@ const CreatePostCard = ({ onPostCreated }) => {
 
   const uploadImages = async () => {
     try {
-      const uploadPromises = selectedImages.map(async (image, index) => {
-        const uploadedUrl = await UploadToCloudinary(image, "social_posts");
-        // Update progress as each image uploads
-        setUploadProgress(((index + 1) / selectedImages.length) * 100);
-        return uploadedUrl;
-      });
+      // Process images sequentially instead of in parallel to avoid network congestion
+      const uploadedUrls = [];
 
-      return await Promise.all(uploadPromises);
+      for (let i = 0; i < selectedImages.length; i++) {
+        const image = selectedImages[i];
+        console.log(`Uploading image ${i + 1}/${selectedImages.length}:`, image);
+
+        // Add retry logic
+        let retries = 3;
+        let uploadedUrl = null;
+
+        while (retries > 0 && !uploadedUrl) {
+          try {
+            // Ensure the image object has the properties Cloudinary expects
+            const imageToUpload = {
+              uri: image.uri,
+              type: image.mimeType || "image/jpeg",
+              name: image.fileName || `upload_${Date.now()}.jpg`,
+              fileSize: image.fileSize,
+            };
+
+            uploadedUrl = await UploadToCloudinary(imageToUpload, "social_posts");
+            uploadedUrls.push(uploadedUrl);
+
+            // Update progress as each image uploads
+            setUploadProgress(((i + 1) / selectedImages.length) * 100);
+
+            // Add a small delay between uploads to prevent overwhelming the network
+            if (i < selectedImages.length - 1) {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+          } catch (error) {
+            console.error(`Upload attempt ${4 - retries} failed for image ${i + 1}:`, error);
+            retries--;
+
+            if (retries === 0) {
+              throw new Error(`Failed to upload image ${i + 1} after multiple attempts`);
+            }
+
+            // Wait before retry
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
+      }
+
+      return uploadedUrls;
     } catch (error) {
       console.error("Error uploading images:", error);
       throw new Error("Failed to upload images");

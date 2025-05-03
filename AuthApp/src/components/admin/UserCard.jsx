@@ -58,9 +58,6 @@ const UserCard = ({ item, onToggleStatus, onEdit, onBanUser, onViewDetails }) =>
         <TouchableOpacity onPress={() => onEdit(item)} style={usermanagestyles.editButton}>
           <MaterialIcons name="edit" size={22} color="#4a80f5" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onBanUser(item)} style={usermanagestyles.deleteButton}>
-          <MaterialIcons name={item.isBanned ? "restore" : "block"} size={22} color={item.isBanned ? "#4a80f5" : "#f44336"} />
-        </TouchableOpacity>
         <TouchableOpacity onPress={() => onViewDetails(item)} style={usermanagestyles.detailsButton}>
           <MaterialIcons name="person" size={22} color="#607D8B" />
         </TouchableOpacity>

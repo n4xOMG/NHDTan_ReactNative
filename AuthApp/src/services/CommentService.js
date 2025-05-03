@@ -13,7 +13,7 @@ export const getBookComments = async ({ bookId, page = 0, size = 10 }) => {
   }
 };
 
-export const getChapterComments = async ({ chapterId, page = 1, size = 10 }) => {
+export const getChapterComments = async ({ chapterId, page = 0, size = 10 }) => {
   try {
     const response = await api.get(`${API_BASE_URL}/chapters/${chapterId}/comments`, {
       params: { page, size },
@@ -25,9 +25,11 @@ export const getChapterComments = async ({ chapterId, page = 1, size = 10 }) => 
   }
 };
 
-export const getPostComments = async ({ postId }) => {
+export const getPostComments = async ({ postId, page = 0, size = 10 }) => {
   try {
-    const response = await api.get(`${API_BASE_URL}/posts/${postId}/comments`);
+    const response = await api.get(`${API_BASE_URL}/posts/${postId}/comments`, {
+      params: { page, size },
+    });
     return response.data;
   } catch (error) {
     console.error("Error during fetching post comments:", error);

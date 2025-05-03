@@ -1,19 +1,25 @@
 import React from "react";
-import { Text, StyleSheet } from "react-native";
+import { TouchableOpacity, Text, StyleSheet } from "react-native";
 
-const AuthLink = ({ title, onPress }) => {
+const AuthLink = ({ title, onPress, disabled }) => {
   return (
-    <Text style={styles.link} onPress={onPress}>
-      {title}
-    </Text>
+    <TouchableOpacity onPress={onPress} style={styles.container} disabled={disabled}>
+      <Text style={[styles.text, disabled && styles.textDisabled]}>{title}</Text>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
-  link: {
-    color: "blue",
-    marginTop: 20,
-    textAlign: "center",
+  container: {
+    alignItems: "center",
+    marginTop: 10,
+  },
+  text: {
+    color: "#4F46E5",
+    fontSize: 14,
+  },
+  textDisabled: {
+    color: "#9CA3AF",
   },
 });
 

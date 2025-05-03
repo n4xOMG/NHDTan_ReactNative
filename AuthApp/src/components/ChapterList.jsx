@@ -1,8 +1,8 @@
 import { AntDesign } from "@expo/vector-icons";
 import React, { useEffect } from "react";
 import { Alert, FlatList, Text, TouchableOpacity, View } from "react-native";
-import * as Progress from "react-native-progress";
 import { useSelector } from "react-redux";
+import ProgressBar from "./ProgressBar";
 import { unlockChapter } from "../services/ChapterServices";
 import { chapteritemstyles } from "../style/chapteritemstyles";
 
@@ -77,12 +77,12 @@ const ChapterList = ({ chapters, navigation, onChapterUnlocked, bookId }) => {
         )}
       </View>
       <View style={chapteritemstyles.progressContainer}>
-        <Progress.Bar
+        <ProgressBar
           style={chapteritemstyles.progressBar}
           progress={getChapterProgress(item.id) / 100}
           color="#4CAF50"
-          width={null}
           height={8}
+          borderRadius={4}
         />
         <Text style={chapteritemstyles.progressText}>{Math.round(getChapterProgress(item.id))}%</Text>
       </View>

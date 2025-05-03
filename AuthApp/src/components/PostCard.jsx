@@ -1,9 +1,9 @@
-import React from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, Modal, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { AntDesign, MaterialIcons } from "@expo/vector-icons";
-import { useDispatch } from "react-redux";
-import { toggleLikePost } from "../redux/slices/postSlice";
+import { AntDesign, MaterialIcons, Entypo } from "@expo/vector-icons";
+import { useDispatch, useSelector } from "react-redux";
+import { toggleLikePost, removePost, updateExistingPost } from "../redux/slices/postSlice";
 
 const { width } = Dimensions.get("window");
 
@@ -39,6 +39,12 @@ const formatTimeAgo = (timestamp) => {
 const PostCard = ({ post }) => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
+  const [showOptions, setShowOptions] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const currentUser = useSelector((state) => state.auth.user);
+
+  // Check if current user is post owner or admin
+  const canModifyPost = currentUser && (currentUser.id === post.user.id || (currentUser.role && currentUser.role.name === "ADMIN"));
 
   const handleLike = () => {
     dispatch(toggleLikePost(post.id));
@@ -59,12 +65,32 @@ const PostCard = ({ post }) => {
     });
   };
 
+  const navigateToEditPost = () => {
+    setShowOptions(false);
+    navigation.navigate("EditPost", { post });
+  };
+
+  const confirmDeletePost = () => {
+    setShowOptions(false);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeletePost = () => {
+    dispatch(removePost(post.id))
+      .unwrap()
+      .then(() => {
+        setShowDeleteConfirm(false);
+        Alert.alert("Success", "Post deleted successfully");
+      })
+      .catch((error) => {
+        Alert.alert("Error", "Failed to delete post: " + error);
+      });
+  };
   const navigateToBookDetail = () => {
     if (post.postType === "BOOK_SHARE" && post.sharedBook?.id) {
       navigation.navigate("BookDetail", { bookId: post.sharedBook.id });
     }
   };
-
   const renderSharedBook = () => {
     if (post.postType !== "BOOK_SHARE" || !post.sharedBook) return null;
 
@@ -127,11 +153,7 @@ const PostCard = ({ post }) => {
     };
 
     return (
-      <TouchableOpacity
-        style={[styles.sharedItemContainer, { borderColor: "blue" }]} // Make it visually distinct for debugging
-        onPress={handleChapterPress}
-        activeOpacity={0.5} // Make the press more visible
-      >
+      <TouchableOpacity style={[styles.sharedItemContainer, { borderColor: "blue" }]} onPress={handleChapterPress} activeOpacity={0.5}>
         <View style={styles.sharedItemHeader}>
           <MaterialIcons name="bookmark" size={16} color="#3498db" />
           <Text style={styles.sharedItemType}>Chapter</Text>
@@ -233,6 +255,59 @@ const PostCard = ({ post }) => {
     );
   };
 
+  const renderPostOptions = () => {
+    if (!canModifyPost) return null;
+
+    return (
+      <View style={styles.optionsContainer}>
+        <TouchableOpacity style={styles.optionsButton} onPress={() => setShowOptions(!showOptions)}>
+          <Entypo name="dots-three-vertical" size={16} color="#777" />
+        </TouchableOpacity>
+
+        {showOptions && (
+          <View style={styles.optionsMenu}>
+            {currentUser.id === post.user.id && (
+              <TouchableOpacity style={styles.optionItem} onPress={navigateToEditPost}>
+                <MaterialIcons name="edit" size={16} color="#333" />
+                <Text style={styles.optionText}>Edit Post</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={styles.optionItem} onPress={confirmDeletePost}>
+              <MaterialIcons name="delete" size={16} color="#e74c3c" />
+              <Text style={[styles.optionText, { color: "#e74c3c" }]}>Delete Post</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderDeleteConfirmation = () => {
+    return (
+      <Modal transparent={true} visible={showDeleteConfirm} animationType="fade" onRequestClose={() => setShowDeleteConfirm(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowDeleteConfirm(false)}>
+          <View style={styles.modalContainer} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Delete Post</Text>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={styles.modalText}>Are you sure you want to delete this post? This action cannot be undone.</Text>
+            </View>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowDeleteConfirm(false)}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, styles.deleteButton]} onPress={handleDeletePost}>
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    );
+  };
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -245,6 +320,7 @@ const PostCard = ({ post }) => {
           </TouchableOpacity>
           <Text style={styles.timestamp}>{formatTimeAgo(post.timestamp)}</Text>
         </View>
+        {renderPostOptions()}
       </View>
 
       {post.content && <Text style={styles.content}>{post.content}</Text>}
@@ -262,9 +338,11 @@ const PostCard = ({ post }) => {
 
         <TouchableOpacity onPress={navigateToDetail} style={styles.commentButton}>
           <AntDesign name="message1" size={18} color="#777" />
-          <Text style={styles.commentCount}>{post.comments?.length || 0}</Text>
+          <Text style={styles.commentCount}>{post.commentCount || 0}</Text>
         </TouchableOpacity>
       </View>
+
+      {renderDeleteConfirmation()}
     </View>
   );
 };
@@ -508,6 +586,95 @@ const styles = StyleSheet.create({
   moreImagesText: {
     color: "white",
     fontSize: 20,
+    fontWeight: "bold",
+  },
+  optionsContainer: {
+    position: "relative",
+  },
+  optionsButton: {
+    padding: 8,
+  },
+  optionsMenu: {
+    position: "absolute",
+    top: 30,
+    right: 0,
+    backgroundColor: "white",
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 5,
+    width: 140,
+    zIndex: 10,
+  },
+  optionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  optionText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: "#333",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContainer: {
+    width: width * 0.85,
+    backgroundColor: "white",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  modalHeader: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalText: {
+    fontSize: 16,
+    color: "#444",
+    lineHeight: 22,
+  },
+  modalFooter: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+  },
+  modalButton: {
+    flex: 1,
+    padding: 15,
+    alignItems: "center",
+  },
+  cancelButton: {
+    borderRightWidth: 1,
+    borderRightColor: "#f0f0f0",
+  },
+  deleteButton: {
+    backgroundColor: "#fff",
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    color: "#333",
+    fontWeight: "500",
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    color: "#e74c3c",
     fontWeight: "bold",
   },
 });

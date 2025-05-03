@@ -282,3 +282,110 @@ export const unfollowUser = async (userId) => {
     throw error;
   }
 };
+
+/**
+ * Update user profile information
+ * @param {number} userId - The ID of the user to update
+ * @param {Object} userData - Updated user data
+ * @returns {Promise<Object>} Updated user data
+ */
+export const updateUser = async (userId, userData) => {
+  try {
+    const response = await api.put(`${API_BASE_URL}/admin/users/update/${userId}`, userData);
+    return response.data;
+  } catch (error) {
+    console.error(`Error updating user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a user
+ * @param {number} userId - The ID of the user to delete
+ * @returns {Promise<Object>} Confirmation of deletion
+ */
+export const deleteUser = async (userId) => {
+  try {
+    const response = await api.delete(`${API_BASE_URL}/admin/users/delete/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error deleting user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Suspend a user
+ * @param {number} userId - The ID of the user to suspend
+ * @returns {Promise<Object>} Updated user data
+ */
+export const suspendUser = async (userId) => {
+  try {
+    const response = await api.patch(`${API_BASE_URL}/admin/users/suspend/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error suspending user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Unsuspend a user
+ * @param {number} userId - The ID of the user to unsuspend
+ * @returns {Promise<Object>} Updated user data
+ */
+export const unsuspendUser = async (userId) => {
+  try {
+    const response = await api.patch(`${API_BASE_URL}/admin/users/unsuspend/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error unsuspending user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Ban a user
+ * @param {number} userId - The ID of the user to ban
+ * @returns {Promise<Object>} Updated user data
+ */
+export const banUser = async (userId) => {
+  try {
+    const response = await api.patch(`${API_BASE_URL}/admin/users/ban/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error banning user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Unban a user
+ * @param {number} userId - The ID of the user to unban
+ * @returns {Promise<Object>} Updated user data
+ */
+export const unbanUser = async (userId) => {
+  try {
+    const response = await api.patch(`${API_BASE_URL}/admin/users/unban/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error unbanning user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Update a user's role
+ * @param {number} userId - The ID of the user
+ * @param {string} roleName - The new role to assign
+ * @returns {Promise<Object>} Updated user data
+ */
+export const updateUserRole = async (userId, roleName) => {
+  try {
+    const response = await api.put(`${API_BASE_URL}/admin/users/${userId}/role?roleName=${roleName}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error updating role for user ${userId}:`, error);
+    throw error;
+  }
+};

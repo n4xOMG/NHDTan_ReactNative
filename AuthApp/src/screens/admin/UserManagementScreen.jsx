@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { View, FlatList, ActivityIndicator, Alert, SafeAreaView, StatusBar } from "react-native";
-import { getAllUsers, updateUserStatus } from "../../services/UserServices";
+import {
+  getAllUsers,
+  updateUserStatus,
+  suspendUser,
+  unsuspendUser,
+  banUser,
+  unbanUser,
+  updateUserRole,
+  updateUser,
+  deleteUser,
+} from "../../services/UserServices";
 import { getPurchaseHistoryByUser } from "../../services/PurchaseServices"; // Add this import
 import { usermanagestyles } from "../../style/usermanagestyles";
 
@@ -134,7 +144,12 @@ const UserManagementScreen = () => {
     try {
       const newSuspendedStatus = !user.isSuspended;
 
-      await updateUserStatus(user.id, newSuspendedStatus, user.isBanned, user.banReason);
+      // Use the new dedicated suspend/unsuspend functions
+      if (newSuspendedStatus) {
+        await suspendUser(user.id);
+      } else {
+        await unsuspendUser(user.id);
+      }
 
       // Update local state
       setUsers(users.map((u) => (u.id === user.id ? { ...u, isSuspended: newSuspendedStatus } : u)));
@@ -168,6 +183,8 @@ const UserManagementScreen = () => {
                   return;
                 }
 
+                // Use the new ban function and then update status with reason
+                await banUser(user.id);
                 await updateUserStatus(user.id, user.isSuspended, true, reason);
 
                 // Update local state
@@ -180,8 +197,8 @@ const UserManagementScreen = () => {
           "plain-text"
         );
       } else {
-        // Unban user
-        await updateUserStatus(user.id, user.isSuspended, false, "");
+        // Unban user using the dedicated function
+        await unbanUser(user.id);
 
         // Update local state
         setUsers(users.map((u) => (u.id === user.id ? { ...u, isBanned: false, banReason: "" } : u)));
@@ -191,6 +208,20 @@ const UserManagementScreen = () => {
     } catch (error) {
       console.error("Error updating ban status:", error);
       Alert.alert("Error", "Failed to update ban status");
+    }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    try {
+      await updateUserRole(userId, newRole);
+
+      // Update local state
+      setUsers(users.map((u) => (u.id === userId ? { ...u, role: { name: newRole } } : u)));
+
+      Alert.alert("Success", "User role updated successfully");
+    } catch (error) {
+      console.error("Error updating user role:", error);
+      Alert.alert("Error", "Failed to update user role");
     }
   };
 
@@ -204,7 +235,7 @@ const UserManagementScreen = () => {
     fetchUsers();
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!userName || !userEmail) {
       Alert.alert("Error", "Name and email are required");
       return;
@@ -217,9 +248,65 @@ const UserManagementScreen = () => {
       return;
     }
 
-    // In a real implementation, you would call an API endpoint to update the user
-    Alert.alert("Not Implemented", "User update API not implemented yet");
-    setModalVisible(false);
+    try {
+      if (currentUser) {
+        // Prepare updated user data
+        const updatedUserData = {
+          fullname: userName,
+          email: userEmail,
+          // Add any other fields that need updating
+        };
+
+        // Call the API to update the user
+        const updatedUser = await updateUser(currentUser.id, updatedUserData);
+
+        // If role has changed, update it
+        if (userRole !== currentUser.role?.name) {
+          await updateUserRole(currentUser.id, userRole);
+        }
+
+        // If status has changed, update it
+        if (userStatus === "suspended" && !currentUser.isSuspended) {
+          await suspendUser(currentUser.id);
+        } else if (userStatus !== "suspended" && currentUser.isSuspended) {
+          await unsuspendUser(currentUser.id);
+        }
+
+        if (userStatus === "banned" && !currentUser.isBanned) {
+          if (!banReason) {
+            Alert.alert("Error", "A reason is required to ban a user");
+            return;
+          }
+          await banUser(currentUser.id);
+          await updateUserStatus(currentUser.id, currentUser.isSuspended, true, banReason);
+        } else if (userStatus !== "banned" && currentUser.isBanned) {
+          await unbanUser(currentUser.id);
+        }
+
+        // Update the user in the local state
+        setUsers(
+          users.map((u) =>
+            u.id === currentUser.id
+              ? {
+                  ...u,
+                  fullname: userName,
+                  email: userEmail,
+                  role: { name: userRole },
+                  isSuspended: userStatus === "suspended",
+                  isBanned: userStatus === "banned",
+                  banReason: userStatus === "banned" ? banReason : "",
+                }
+              : u
+          )
+        );
+
+        Alert.alert("Success", "User updated successfully");
+        setModalVisible(false);
+      }
+    } catch (error) {
+      console.error("Error updating user:", error);
+      Alert.alert("Error", "Failed to update user");
+    }
   };
 
   const fetchUserDetails = async (userId) => {
@@ -251,6 +338,31 @@ const UserManagementScreen = () => {
     setSelectedUser(user);
     setDetailsModalVisible(true);
     fetchUserDetails(user.id);
+  };
+
+  const handleDeleteUser = async (userId) => {
+    // Confirm before deletion
+    Alert.alert("Confirm Deletion", "Are you sure you want to delete this user? This action cannot be undone.", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Delete",
+        onPress: async () => {
+          try {
+            await deleteUser(userId);
+            // Remove the user from local state
+            setUsers(users.filter((user) => user.id !== userId));
+            Alert.alert("Success", "User deleted successfully");
+          } catch (error) {
+            console.error("Error deleting user:", error);
+            Alert.alert("Error", "Failed to delete user");
+          }
+        },
+        style: "destructive",
+      },
+    ]);
   };
 
   return (
@@ -303,6 +415,7 @@ const UserManagementScreen = () => {
         setBanReason={setBanReason}
         setIsBanned={setIsBanned}
         handleSave={handleSave}
+        handleDeleteUser={handleDeleteUser}
       />
 
       <UserDetailsModal

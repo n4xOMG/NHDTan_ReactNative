@@ -1,8 +1,9 @@
 import React, { useEffect } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDispatch, useSelector } from "react-redux";
 import PostCard from "../components/PostCard";
+import CommentsList from "../components/CommentList";
 import { fetchPostById } from "../redux/slices/postSlice";
 
 const PostDetailScreen = ({ route, navigation }) => {
@@ -48,11 +49,24 @@ const PostDetailScreen = ({ route, navigation }) => {
     );
   }
 
+  const HeaderComponent = () => (
+    <>
+      <PostCard post={currentPost} />
+      <View style={styles.commentsContainer}>
+        <Text style={styles.commentsTitle}>Comments</Text>
+      </View>
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        <PostCard post={currentPost} />
-      </ScrollView>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === "ios" ? "padding" : null}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
+      >
+        <CommentsList postId={currentPost.id} ListHeaderComponent={HeaderComponent} inputAtBottom={true} />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -62,15 +76,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8f9fa",
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#f8f9fa",
-  },
-  scrollView: {
-    flex: 1,
-    padding: 15,
   },
   errorContainer: {
     flex: 1,
@@ -82,6 +95,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#e74c3c",
     textAlign: "center",
+  },
+  commentsContainer: {
+    marginTop: 10,
+    padding: 5,
+  },
+  commentsTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10,
+    marginLeft: 15,
+    color: "#333",
   },
 });
 

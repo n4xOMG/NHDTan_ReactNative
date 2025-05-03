@@ -147,32 +147,26 @@ const ChapterDetailScreen = ({ route, navigation }) => {
 
   // Auto-scroll when content height and progress are ready
   useEffect(() => {
-    console.log(
-      "Auto-scroll check - Loading:",
-      loading,
-      "Content Height:",
-      contentHeight,
-      "Scroll Progress:",
-      scrollProgress,
-      "Initial Scroll Done:",
-      initialScrollDone.current,
-      "Has User Scrolled:",
-      hasUserScrolled
-    );
+    // Only perform auto-scroll when all conditions are met
     if (!loading && contentHeight > screenHeight && scrollProgress > 0 && !initialScrollDone.current && !hasUserScrolled) {
-      scrollToProgress(scrollProgress);
-      initialScrollDone.current = true;
+      // Set a timeout to ensure the view is fully rendered
+      const timer = setTimeout(() => {
+        scrollToProgress(scrollProgress);
+        initialScrollDone.current = true;
+      }, 300);
+
+      return () => clearTimeout(timer);
     }
   }, [loading, contentHeight, scrollProgress, screenHeight, hasUserScrolled]);
 
-  // Save progress when scroll position changes
+  // Save progress when scroll position changes - simplified
   useEffect(() => {
+    // Only save progress if user has actually scrolled
     if (hasUserScrolled && scrollProgress > 0) {
       debouncedSaveProgress(scrollProgress);
     }
-    return () => {
-      debouncedSaveProgress.cancel();
-    };
+
+    return () => debouncedSaveProgress.cancel();
   }, [scrollProgress, hasUserScrolled, debouncedSaveProgress]);
 
   // Save progress when leaving or app state changes
@@ -242,42 +236,35 @@ const ChapterDetailScreen = ({ route, navigation }) => {
     setContentHeight(contentHeight);
   };
 
-  // Handle scroll and progress calculation
-  const handleScroll = (event) => {
+  // More efficient scroll handler with throttling
+  const handleScroll = useCallback((event) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const scrollableHeight = contentSize.height - layoutMeasurement.height;
+
     if (scrollableHeight > 0) {
       const progress = Math.min(1, contentOffset.y / scrollableHeight);
       setScrollProgress(progress);
+
+      // Only set hasUserScrolled to true on actual user scrolling
+      if (!initialScrollDone.current) return;
       setHasUserScrolled(true);
     }
-  };
+  }, []);
 
-  // Scroll to a specific progress point
+  // Improved scroll to progress function
   const scrollToProgress = (progress) => {
-    if (scrollViewRef.current && contentHeight > 0) {
-      const scrollableHeight = contentHeight - screenHeight;
-      if (scrollableHeight > 0) {
-        const scrollPosition = scrollableHeight * progress;
-        console.log(
-          "Scrolling to:",
-          scrollPosition,
-          "Progress:",
-          progress,
-          "Content Height:",
-          contentHeight,
-          "Screen Height:",
-          screenHeight
-        );
-        setTimeout(() => {
-          scrollViewRef.current.scrollTo({ y: scrollPosition, animated: true });
-        }, 500);
-      } else {
-        console.log("Scrollable height is 0 or negative:", scrollableHeight);
-      }
-    } else {
-      console.log("ScrollView ref or content height not ready:", { scrollViewRef: !!scrollViewRef.current, contentHeight });
-    }
+    if (!scrollViewRef.current || contentHeight <= screenHeight) return;
+
+    const scrollableHeight = contentHeight - screenHeight;
+    if (scrollableHeight <= 0) return;
+
+    const scrollPosition = scrollableHeight * progress;
+
+    // Use a timeout to ensure UI is ready
+    scrollViewRef.current.scrollTo({
+      y: scrollPosition,
+      animated: true,
+    });
   };
 
   const toggleFavourite = async () => {
@@ -369,7 +356,9 @@ const ChapterDetailScreen = ({ route, navigation }) => {
         />
       )}
 
-      <CommentModal visible={showCommentModal} onClose={() => setShowCommentModal(false)} chapterId={chapterId} />
+      {/* Comment Modal - Make sure it stops event propagation */}
+      <CommentModal visible={showCommentModal} onClose={() => setShowCommentModal(false)} chapterId={normalizedChapterId()} />
+
       <ChapterListModal
         visible={showChapterModal}
         onClose={() => setShowChapterModal(false)}
