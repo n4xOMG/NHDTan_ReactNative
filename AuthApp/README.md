@@ -81,5 +81,3 @@ AuthApp/
 ├── package.json      # Project dependencies and scripts
 └── .env              # Environment variables (needs to be created)
 ```
-
-_(This README provides a basic overview. You can expand it further with more details on specific features, contribution guidelines, or deployment instructions.)_
