@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 const generateUniqueUploadId = () => {
   return `uqid-${Date.now()}`;
 };

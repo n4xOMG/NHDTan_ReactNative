@@ -55,18 +55,42 @@ const ChatScreen = () => {
 
   const subscriptionRef = useRef(null);
 
-  // Handle incoming messages from websocket
+  // Sort messages by timestamp for rendering
+  const sortedMessages = [...chatMessages].sort((a, b) => {
+    const dateA = a.timestamp ? new Date(a.timestamp) : new Date(0);
+    const dateB = b.timestamp ? new Date(b.timestamp) : new Date(0);
+    return dateA - dateB;
+  });
+
+  // Handle incoming WebSocket messages
   const handleReceivedMessage = useCallback(
     (receivedMessage) => {
       if (!activeChat) return;
 
-      console.log("Processing received message:", receivedMessage);
+      // Skip messages with no content
+      if (!receivedMessage.content && !receivedMessage.imageUrl) return;
 
-      // Ensure message has the correct format
+      // More robust duplicate detection
+      const isDuplicate = chatMessages.some(
+        (m) =>
+          // Match by ID
+          (m.id && receivedMessage.id && m.id === receivedMessage.id) ||
+          // Match by tempId
+          (m.tempId && receivedMessage.tempId && m.tempId === receivedMessage.tempId) ||
+          // Match by timestamp and content (fallback)
+          (m.timestamp === receivedMessage.timestamp &&
+            m.content === receivedMessage.content &&
+            m.sender?.id === receivedMessage.sender?.id)
+      );
+
+      // Don't process duplicate messages
+      if (isDuplicate) return;
+
+      // Proceed with message processing
       const formattedMessage = {
         ...receivedMessage,
         chatId: activeChat.id,
-        tempId: receivedMessage.tempId || `temp-${Date.now()}-${Math.random()}`,
+        tempId: receivedMessage.tempId || receivedMessage.id || `temp-${Date.now()}-${Math.random()}`,
       };
 
       dispatch(
@@ -76,11 +100,11 @@ const ChatScreen = () => {
         })
       );
 
-      if (receivedMessage.sender && receivedMessage.sender.id !== currentUser.id) {
+      if (receivedMessage.sender?.id !== currentUser.id) {
         dispatch(markMessagesAsRead({ chatId: activeChat.id }));
       }
     },
-    [activeChat, currentUser, dispatch]
+    [activeChat, currentUser?.id, dispatch]
   );
 
   useEffect(() => {
@@ -123,10 +147,9 @@ const ChatScreen = () => {
     }, [activeChat])
   );
 
+  // Optimize the dependency array by removing chatMessages
   const setupChatSubscription = useCallback(() => {
     if (!activeChat) return;
-
-    console.log("Setting up chat subscription for chat ID:", activeChat.id);
 
     const attemptSubscription = (retries = 3, delay = 1000) => {
       if (!isWebSocketConnected()) {
@@ -141,6 +164,13 @@ const ChatScreen = () => {
 
       const subscription = subscribeToChatMessages(activeChat.id, handleReceivedMessage);
       if (subscription) {
+        if (subscriptionRef.current) {
+          try {
+            subscriptionRef.current.unsubscribe();
+          } catch (e) {
+            console.warn("Error unsubscribing:", e);
+          }
+        }
         subscriptionRef.current = subscription;
       }
 
@@ -156,21 +186,36 @@ const ChatScreen = () => {
     }
   }, [activeChat, setupChatSubscription]);
 
+  // Better management of auto-scrolling with memoized scrollToEnd function
+  const scrollToEnd = useCallback(
+    (animated = false) => {
+      if (flatListRef.current && sortedMessages.length > 0) {
+        try {
+          flatListRef.current.scrollToEnd({ animated });
+        } catch (error) {
+          console.warn("Failed to scroll to end:", error);
+        }
+      }
+    },
+    [sortedMessages.length]
+  );
+
+  // Replace the scrolling effect with a more reliable implementation
   useEffect(() => {
-    if (chatMessages.length > 0 && flatListRef.current) {
-      setTimeout(() => {
-        flatListRef.current.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [chatMessages]);
+    if (sortedMessages.length === 0) return;
+
+    const timer = setTimeout(() => {
+      scrollToEnd(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [sortedMessages.length, scrollToEnd]);
 
   const initializeChat = async () => {
     try {
       const chatAction = await dispatch(createChat(otherUserId));
       if (createChat.fulfilled.match(chatAction)) {
         const chat = chatAction.payload;
-        console.log("Chat created/retrieved:", chat);
-
         dispatch(setActiveChat(chat));
         dispatch(fetchChatMessages(chat.id));
 
@@ -196,32 +241,17 @@ const ChatScreen = () => {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        quality: 0.4, // Further reduce quality to help with upload
+        quality: 0.4,
         base64: false,
         exif: false,
         aspect: [4, 3],
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        console.log("Selected image:", {
-          uri: result.assets[0].uri,
-          fileSize: result.assets[0].fileSize,
-          width: result.assets[0].width,
-          height: result.assets[0].height,
-        });
-
-        // Check file size - warn if over 2MB
         if (result.assets[0].fileSize && result.assets[0].fileSize > 2 * 1024 * 1024) {
           Alert.alert("Large Image", "The selected image is large and may take longer to upload. Continue?", [
-            {
-              text: "Cancel",
-              style: "cancel",
-              onPress: () => setSelectedImage(null),
-            },
-            {
-              text: "Continue",
-              onPress: () => setSelectedImage(result.assets[0]),
-            },
+            { text: "Cancel", style: "cancel", onPress: () => setSelectedImage(null) },
+            { text: "Continue", onPress: () => setSelectedImage(result.assets[0]) },
           ]);
         } else {
           setSelectedImage(result.assets[0]);
@@ -238,64 +268,48 @@ const ChatScreen = () => {
 
     try {
       const tempId = `temp-${Date.now()}-${Math.random()}`;
-
       let imageUrl = null;
+
       if (selectedImage) {
         setIsUploading(true);
-        console.log("Starting image upload process...");
+        const imageToUpload = {
+          uri: selectedImage.uri,
+          type: "image/jpeg",
+          name: `chat_image_${Date.now()}.jpg`,
+        };
+
+        const initialMessage = {
+          chatId: activeChat.id,
+          content: message.trim(),
+          sender: {
+            id: currentUser.id,
+            username: currentUser.username,
+            email: currentUser.email,
+            fullname: currentUser.fullname,
+            avatarUrl: currentUser.avatarUrl,
+          },
+          receiver: { id: otherUserId },
+          timestamp: new Date().toISOString(),
+          tempId,
+          isUploading: true,
+        };
+
+        dispatch(
+          addReceivedMessage({
+            chatId: activeChat.id,
+            message: initialMessage,
+          })
+        );
 
         try {
-          // Create a properly formatted image object with minimal properties
-          const imageToUpload = {
-            uri: selectedImage.uri,
-            type: "image/jpeg", // Force JPEG for better compatibility
-            name: `chat_image_${Date.now()}.jpg`,
-          };
-
-          console.log("Prepared image for upload:", imageToUpload);
-
-          // First add the message without the image
-          const initialMessage = {
-            chatId: activeChat.id,
-            content: message.trim(),
-            sender: {
-              id: currentUser.id,
-              username: currentUser.username,
-              email: currentUser.email,
-              fullname: currentUser.fullname,
-              avatarUrl: currentUser.avatarUrl,
-            },
-            receiver: {
-              id: otherUserId,
-            },
-            timestamp: new Date().toISOString(),
-            tempId: tempId,
-            isUploading: true,
-          };
-
-          // Show the message with "uploading..." immediately
-          dispatch(
-            addReceivedMessage({
-              chatId: activeChat.id,
-              message: initialMessage,
-            })
-          );
-
-          // Upload the image
           imageUrl = await UploadToCloudinary(imageToUpload, "chat_images");
-          console.log("Image upload successful, URL:", imageUrl);
         } catch (uploadError) {
           console.error("Image upload error:", uploadError);
-
-          // Send text-only message if image upload fails
           if (message.trim()) {
             Alert.alert("Upload failed", "Could not upload image, but your text message will be sent.", [{ text: "OK" }]);
           } else {
             setIsUploading(false);
-            Alert.alert(
-              "Upload failed",
-              "Could not upload image. Please try again with a smaller image or check your internet connection."
-            );
+            Alert.alert("Upload failed", "Could not upload image. Please try again.");
             return;
           }
         }
@@ -304,7 +318,7 @@ const ChatScreen = () => {
       const finalMessageData = {
         chatId: activeChat.id,
         content: message.trim(),
-        imageUrl: imageUrl,
+        imageUrl,
         sender: {
           id: currentUser.id,
           username: currentUser.username,
@@ -312,109 +326,41 @@ const ChatScreen = () => {
           fullname: currentUser.fullname,
           avatarUrl: currentUser.avatarUrl,
         },
-        receiver: {
-          id: otherUserId,
-        },
+        receiver: { id: otherUserId },
         timestamp: new Date().toISOString(),
-        tempId: tempId,
+        tempId,
+        isUploading: false,
       };
 
-      console.log("Sending message with data:", {
-        tempId: finalMessageData.tempId,
-        chatId: finalMessageData.chatId,
-        content: finalMessageData.content,
-        hasImage: !!finalMessageData.imageUrl,
-        timestamp: finalMessageData.timestamp,
-      });
+      // Update UI with final message only if no image (to avoid duplicate dispatch)
+      if (!selectedImage) {
+        dispatch(
+          addReceivedMessage({
+            chatId: activeChat.id,
+            message: finalMessageData,
+          })
+        );
+      }
 
-      // Update with final message data including image URL if upload was successful
-      dispatch(
-        addReceivedMessage({
-          chatId: activeChat.id,
-          message: finalMessageData,
-        })
-      );
-
-      // Send message to server
+      // Send to server
       dispatch(sendChatMessage(finalMessageData));
 
-      // Also send via WebSocket for real-time delivery
+      // Send via WebSocket
       sendWsMessage(activeChat.id, finalMessageData);
 
-      // Clear input
       setMessage("");
       setSelectedImage(null);
       setIsUploading(false);
 
-      // Scroll to bottom
-      if (flatListRef.current) {
-        setTimeout(() => {
-          flatListRef.current.scrollToEnd({ animated: true });
-        }, 100);
-      }
+      // Use the memoized scrollToEnd function
+      setTimeout(() => scrollToEnd(true), 300);
     } catch (error) {
       console.error("Error sending message:", error);
       setIsUploading(false);
-
-      // Still allow sending text message if there was an error with the image
-      if (message.trim() && selectedImage) {
-        Alert.alert("Partial Error", "Could not send the image, but would you like to send just the text message?", [
-          {
-            text: "No",
-            style: "cancel",
-          },
-          {
-            text: "Yes",
-            onPress: () => {
-              // Send text-only message
-              handleSendTextOnly(message.trim());
-            },
-          },
-        ]);
-      } else {
-        Alert.alert("Error", "Failed to send message: " + error.message);
-      }
+      Alert.alert("Error", "Failed to send message: " + error.message);
     }
   };
 
-  // Helper to send text-only message when image upload fails
-  const handleSendTextOnly = (textContent) => {
-    if (!textContent || !activeChat) return;
-
-    const tempId = `temp-${Date.now()}-${Math.random()}`;
-
-    const textMessage = {
-      chatId: activeChat.id,
-      content: textContent,
-      sender: {
-        id: currentUser.id,
-        username: currentUser.username,
-        email: currentUser.email,
-        fullname: currentUser.fullname,
-        avatarUrl: currentUser.avatarUrl,
-      },
-      receiver: {
-        id: otherUserId,
-      },
-      timestamp: new Date().toISOString(),
-      tempId: tempId,
-    };
-
-    dispatch(
-      addReceivedMessage({
-        chatId: activeChat.id,
-        message: textMessage,
-      })
-    );
-
-    dispatch(sendChatMessage(textMessage));
-    sendWsMessage(activeChat.id, textMessage);
-
-    setMessage("");
-    setSelectedImage(null);
-  };
-
-  // Get the other user in this conversation
   const getOtherUser = () => {
     if (!activeChat) return null;
     return activeChat.userOne.id === currentUser.id ? activeChat.userTwo : activeChat.userOne;
@@ -428,20 +374,14 @@ const ChatScreen = () => {
         {item.content && item.content.trim() !== "" && (
           <Text style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.theirMessageText]}>{item.content}</Text>
         )}
-
         {item.isUploading && (
           <View style={styles.uploadingContainer}>
             <ActivityIndicator size="small" color={isMyMessage ? "white" : "#3498db"} />
             <Text style={[styles.uploadingText, isMyMessage ? { color: "white" } : { color: "#666" }]}>Uploading image...</Text>
           </View>
         )}
-
         {item.imageUrl && (
-          <TouchableOpacity
-            onPress={() => {
-              console.log("Image pressed:", item.imageUrl);
-            }}
-          >
+          <TouchableOpacity onPress={() => console.log("Image pressed:", item.imageUrl)}>
             <Image
               source={{ uri: item.imageUrl }}
               style={styles.messageImage}
@@ -450,7 +390,6 @@ const ChatScreen = () => {
             />
           </TouchableOpacity>
         )}
-
         <Text style={[styles.messageTime, isMyMessage ? styles.myMessageTime : styles.theirMessageTime]}>
           {item.timestamp
             ? new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -460,7 +399,6 @@ const ChatScreen = () => {
     );
   };
 
-  // Show loading indicator while initializing chat
   if (loading && !activeChat) {
     return (
       <View style={styles.centered}>
@@ -469,7 +407,6 @@ const ChatScreen = () => {
     );
   }
 
-  // Show error message if there's an error
   if (error) {
     return (
       <View style={styles.centered}>
@@ -512,15 +449,16 @@ const ChatScreen = () => {
             </View>
           </View>
         )}
-
         {renderConnectionStatus()}
-
         <FlatList
           ref={flatListRef}
-          data={chatMessages}
-          keyExtractor={(item, index) => (item.id ? item.id.toString() : item.tempId || index.toString())}
+          data={sortedMessages}
+          keyExtractor={(item, index) => (item.id ? item.id.toString() : item.tempId || `msg-${index}`)}
           renderItem={renderMessage}
-          contentContainerStyle={[styles.messagesContainer, chatMessages.length === 0 && styles.emptyMessagesContainer]}
+          contentContainerStyle={[styles.messagesContainer, sortedMessages.length === 0 && styles.emptyMessagesContainer]}
+          onContentSizeChange={() => scrollToEnd(false)}
+          onLayout={() => scrollToEnd(false)}
+          removeClippedSubviews={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No messages yet</Text>
@@ -528,7 +466,6 @@ const ChatScreen = () => {
             </View>
           }
         />
-
         {selectedImage && (
           <View style={styles.selectedImageContainer}>
             <Image source={{ uri: selectedImage.uri }} style={styles.selectedImagePreview} />
@@ -537,12 +474,10 @@ const ChatScreen = () => {
             </TouchableOpacity>
           </View>
         )}
-
         <View style={styles.inputContainer}>
           <TouchableOpacity style={styles.attachButton} onPress={pickImage} disabled={isUploading}>
             <Ionicons name="image-outline" size={24} color={isUploading ? "#cccccc" : "#3498db"} />
           </TouchableOpacity>
-
           <TextInput
             style={styles.input}
             value={message}
@@ -551,7 +486,6 @@ const ChatScreen = () => {
             multiline
             editable={!isUploading}
           />
-
           {isUploading ? (
             <View style={styles.sendButton}>
               <ActivityIndicator size="small" color="white" />
