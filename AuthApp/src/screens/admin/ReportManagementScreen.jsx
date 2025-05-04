@@ -566,7 +566,7 @@ const ReportManagementScreen = ({ navigation }) => {
         <FlatList
           data={searchQuery ? filteredReports : reports}
           renderItem={renderItem}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item, index) => `report-${item.id}-${index}`}
           contentContainerStyle={styles.listContainer}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={["#4a80f5"]} tintColor="#4a80f5" />}
           onEndReached={handleLoadMore}

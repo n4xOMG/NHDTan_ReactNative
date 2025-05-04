@@ -1,28 +1,28 @@
-import React, { useState, useEffect } from "react";
-import { View, FlatList, ActivityIndicator, Alert, SafeAreaView, StatusBar } from "react-native";
-import {
-  getAllUsers,
-  updateUserStatus,
-  suspendUser,
-  unsuspendUser,
-  banUser,
-  unbanUser,
-  updateUserRole,
-  updateUser,
-  deleteUser,
-} from "../../services/UserServices";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, SafeAreaView, StatusBar } from "react-native";
 import { getPurchaseHistoryByUser } from "../../services/PurchaseServices"; // Add this import
+import {
+  banUser,
+  deleteUser,
+  getAllUsers,
+  suspendUser,
+  unbanUser,
+  unsuspendUser,
+  updateUser,
+  updateUserRole,
+  updateUserStatus,
+} from "../../services/UserServices";
 import { usermanagestyles } from "../../style/usermanagestyles";
 
 // Import components
-import UserStatsHeader from "../../components/admin/UserStatsHeader";
-import SearchBar from "../../components/admin/SearchBar";
-import UserFilters from "../../components/admin/UserFilters";
-import SortHeader from "../../components/admin/SortHeader";
-import UserCard from "../../components/admin/UserCard";
 import EditUserModal from "../../components/admin/EditUserModal";
 import EmptyUserList from "../../components/admin/EmptyUserList";
+import SearchBar from "../../components/admin/SearchBar";
+import SortHeader from "../../components/admin/SortHeader";
+import UserCard from "../../components/admin/UserCard";
 import UserDetailsModal from "../../components/admin/UserDetailsModal";
+import UserFilters from "../../components/admin/UserFilters";
+import UserStatsHeader from "../../components/admin/UserStatsHeader";
 
 const UserManagementScreen = () => {
   const [users, setUsers] = useState([]);
@@ -183,9 +183,7 @@ const UserManagementScreen = () => {
                   return;
                 }
 
-                // Use the new ban function and then update status with reason
                 await banUser(user.id);
-                await updateUserStatus(user.id, user.isSuspended, true, reason);
 
                 // Update local state
                 setUsers(users.map((u) => (u.id === user.id ? { ...u, isBanned: true, banReason: reason } : u)));

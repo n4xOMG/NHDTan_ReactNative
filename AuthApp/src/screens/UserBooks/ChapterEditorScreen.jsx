@@ -52,7 +52,7 @@ const ChapterEditorScreen = () => {
       setContent(currentChapter.content || "");
       setContentPreviewText(stripHtml(currentChapter.content || ""));
       setPrice(currentChapter.price?.toString() || "0");
-      setLocked(currentChapter.isLocked || false);
+      setLocked(currentChapter.locked || false);
       setDraft(currentChapter.draft || false);
       setRoomId(currentChapter.roomId || "");
     }
@@ -116,7 +116,7 @@ const ChapterEditorScreen = () => {
     }
 
     try {
-      const collabUrl = `https://yourbookapp.com/collab/${roomId}`;
+      const collabUrl = `${process.env.EXPO_PUBLIC_EDITOR_URL}/edit-chapter/${roomId}`;
       await Share.share({
         message: `Join me to edit this chapter: ${collabUrl}`,
         url: collabUrl,
@@ -139,7 +139,7 @@ const ChapterEditorScreen = () => {
       chapterNum,
       content,
       price: parseInt(price, 10) || 0,
-      isLocked: locked,
+      locked: locked,
       draft,
       roomId,
     };

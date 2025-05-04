@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState, useRef } from "react";
 import { ActivityIndicator, Alert, SafeAreaView, StatusBar, Text, TouchableOpacity, View, Animated } from "react-native";
-import { getBooks } from "../../services/BookServices";
+import { getBooks, createBook, updateBook, deleteBook } from "../../services/BookServices";
+import { getAllCategories, getAllTags } from "../../services/BookMetadataServices";
 import { bookmanagestyles } from "../../style/bookmanagestyles";
 
 // Import components
@@ -16,26 +17,38 @@ const BookManagementScreen = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
-  const [currentBook, setCurrentBook] = useState(null);
   const [sortOrder, setSortOrder] = useState("asc");
   const [sortBy, setSortBy] = useState("title");
 
-  // For the edit/add modal
-  const [bookTitle, setBookTitle] = useState("");
-  const [bookAuthor, setBookAuthor] = useState("");
-  const [bookDescription, setBookDescription] = useState("");
-  const [bookCategory, setBookCategory] = useState("");
-  const [bookLanguage, setBookLanguage] = useState("");
-  const [bookStatus, setBookStatus] = useState("");
-  const [bookImage, setBookImage] = useState("");
+  // State for categories and tags
+  const [categories, setCategories] = useState([]);
+  const [tags, setTags] = useState([]);
+
+  // Add a single formData state for the BookFormModal
+  const [formData, setFormData] = useState({
+    title: "",
+    authorName: "",
+    description: "",
+    categoryId: null,
+    tagIds: [],
+    language: "",
+    status: "",
+    bookCover: "",
+    suggested: false,
+  });
+
+  // Track if we're editing or adding a new book
+  const [isEditing, setIsEditing] = useState(false);
 
   // Add animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const addButtonAnim = useRef(new Animated.Value(0)).current;
 
-  // Fetch books from API
+  // Fetch books, categories, and tags from API
   useEffect(() => {
     fetchBooks();
+    fetchCategories();
+    fetchTags();
   }, []);
 
   const fetchBooks = async () => {
@@ -49,6 +62,26 @@ const BookManagementScreen = () => {
       console.error("Failed to fetch books:", error);
       Alert.alert("Error", "Failed to load books. Please try again.");
       setLoading(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const data = await getAllCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error("Failed to fetch categories:", error);
+      Alert.alert("Error", "Failed to load categories.");
+    }
+  };
+
+  const fetchTags = async () => {
+    try {
+      const data = await getAllTags();
+      setTags(data);
+    } catch (error) {
+      console.error("Failed to fetch tags:", error);
+      Alert.alert("Error", "Failed to load tags.");
     }
   };
 
@@ -125,26 +158,50 @@ const BookManagementScreen = () => {
   };
 
   const handleEdit = (book) => {
-    setCurrentBook(book);
-    setBookTitle(book.title || "");
-    setBookAuthor(book.authorName || "");
-    setBookDescription(book.description || "");
-    setBookCategory(book.categoryName || "");
-    setBookLanguage(book.language || "");
-    setBookStatus(book.status || "");
-    setBookImage(book.bookCover || "");
+    // Find the category ID based on category name
+    const categoryObj = categories.find((cat) => cat.name === book.categoryName);
+    const categoryId = categoryObj ? categoryObj.id : null;
+
+    // Format the data for the form
+    setFormData({
+      id: book.id,
+      title: book.title || "",
+      authorName: book.authorName || "",
+      description: book.description || "",
+      categoryId: categoryId,
+      tagIds: book.tagIds || [],
+      language: book.language || "",
+      status: book.status || "",
+      bookCover: book.bookCover || "",
+      suggested: book.isSuggested || false,
+      // Preserve other fields
+      viewCount: book.viewCount,
+      favCount: book.favCount,
+      avgRating: book.avgRating,
+      ratingCount: book.ratingCount,
+      chapterCount: book.chapterCount,
+      latestChapterNumber: book.latestChapterNumber,
+    });
+
+    setIsEditing(true);
     setModalVisible(true);
   };
 
   const handleAdd = () => {
-    setCurrentBook(null);
-    setBookTitle("");
-    setBookAuthor("");
-    setBookDescription("");
-    setBookCategory("");
-    setBookLanguage("");
-    setBookStatus("");
-    setBookImage("");
+    // Reset form data
+    setFormData({
+      title: "",
+      authorName: "",
+      description: "",
+      categoryId: null,
+      tagIds: [],
+      language: "",
+      status: "",
+      bookCover: "",
+      suggested: false,
+    });
+
+    setIsEditing(false);
     setModalVisible(true);
   };
 
@@ -156,51 +213,65 @@ const BookManagementScreen = () => {
       },
       {
         text: "Delete",
-        onPress: () => {
-          // Delete logic here - would be API call in real app
-          // For now we'll just update the local state
-          setBooks(books.filter((book) => book.id !== id));
+        onPress: async () => {
+          try {
+            setLoading(true);
+            await deleteBook(id);
+            // Update local state after successful API call
+            setBooks(books.filter((book) => book.id !== id));
+            Alert.alert("Success", "Book deleted successfully");
+          } catch (error) {
+            console.error("Error deleting book:", error);
+            Alert.alert("Error", "Failed to delete book. Please try again.");
+          } finally {
+            setLoading(false);
+          }
         },
         style: "destructive",
       },
     ]);
   };
 
-  const handleSave = () => {
-    if (!bookTitle || !bookAuthor || !bookCategory) {
+  // Handle form field changes
+  const handleChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSave = async () => {
+    // Validate required fields
+    if (!formData.title || !formData.authorName || !formData.categoryId) {
       Alert.alert("Error", "Please fill in all required fields");
       return;
     }
 
-    const updatedBook = {
-      id: currentBook ? currentBook.id : Date.now(),
-      title: bookTitle,
-      authorName: bookAuthor,
-      description: bookDescription,
-      categoryName: bookCategory,
-      language: bookLanguage,
-      status: bookStatus,
-      bookCover: bookImage || null,
-      // Preserve other fields if editing an existing book
-      ...(currentBook && {
-        viewCount: currentBook.viewCount,
-        favCount: currentBook.favCount,
-        avgRating: currentBook.avgRating,
-        ratingCount: currentBook.ratingCount,
-        chapterCount: currentBook.chapterCount,
-        latestChapterNumber: currentBook.latestChapterNumber,
-      }),
-    };
+    try {
+      setLoading(true);
+      let savedBook;
 
-    if (currentBook) {
-      // Edit existing book
-      setBooks(books.map((book) => (book.id === currentBook.id ? updatedBook : book)));
-    } else {
-      // Add new book
-      setBooks([...books, updatedBook]);
+      if (isEditing) {
+        // Update existing book
+        savedBook = await updateBook(formData);
+        // Update local state
+        setBooks(books.map((book) => (book.id === formData.id ? savedBook : book)));
+        Alert.alert("Success", "Book updated successfully");
+      } else {
+        // Create new book
+        savedBook = await createBook(formData);
+        // Update local state
+        setBooks([...books, savedBook]);
+        Alert.alert("Success", "Book created successfully");
+      }
+
+      setModalVisible(false);
+    } catch (error) {
+      console.error("Error saving book:", error);
+      Alert.alert("Error", "Failed to save book. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    setModalVisible(false);
   };
 
   // Add button press animation
@@ -266,22 +337,12 @@ const BookManagementScreen = () => {
       <BookFormModal
         modalVisible={modalVisible}
         setModalVisible={setModalVisible}
-        currentBook={currentBook}
-        bookTitle={bookTitle}
-        setBookTitle={setBookTitle}
-        bookAuthor={bookAuthor}
-        setBookAuthor={setBookAuthor}
-        bookDescription={bookDescription}
-        setBookDescription={setBookDescription}
-        bookCategory={bookCategory}
-        setBookCategory={setBookCategory}
-        bookLanguage={bookLanguage}
-        setBookLanguage={setBookLanguage}
-        bookStatus={bookStatus}
-        setBookStatus={setBookStatus}
-        bookImage={bookImage}
-        setBookImage={setBookImage}
+        formData={formData}
+        handleChange={handleChange}
         handleSave={handleSave}
+        categories={categories}
+        tags={tags}
+        isEditing={isEditing}
       />
     </SafeAreaView>
   );

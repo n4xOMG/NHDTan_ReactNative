@@ -38,20 +38,6 @@ export const getAllUsers = async (page = 0, size = 10, searchTerm = "") => {
   }
 };
 
-export const updateUserStatus = async (userId, isSuspended, isBanned, banReason) => {
-  try {
-    const response = await api.put(`${API_BASE_URL}/users/${userId}/status`, {
-      isSuspended,
-      isBanned,
-      banReason,
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error updating user status:", error);
-    throw error;
-  }
-};
-
 export const getUserActivityLogs = async (username, page = 0, size = 20) => {
   try {
     const response = await api.get(`${API_BASE_URL}/admin/logs/user/${username}`, {
